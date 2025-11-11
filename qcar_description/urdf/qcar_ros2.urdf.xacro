@@ -556,7 +556,31 @@ limitations under the License.
     </joint>
 
     <!-- The above is for the wheels and turning etc -->
-    
+    <!-- Gazebo Parameters -->
+    <gazebo reference="base">
+      <mu1>0.0001</mu1>
+      <mu2>0.0001</mu2>
+    </gazebo>
+
+    <gazebo reference="right_front_wheel">
+      <mu1>100.0</mu1>
+      <mu2>100.0</mu2>
+    </gazebo>
+
+    <gazebo reference="left_front_wheel">
+      <mu1>100.0</mu1>
+      <mu2>100.0</mu2>
+    </gazebo>
+      
+    <gazebo reference="right_rear_wheel">
+      <mu1>100.0</mu1>
+      <mu2>100.0</mu2>
+    </gazebo>
+
+    <gazebo reference="left_rear_wheel">
+      <mu1>100.0</mu1>
+      <mu2>100.0</mu2>
+    </gazebo>
     
     <!--<gazebo>
       <plugin name="gazebo_ros_control" filename="libgazebo_ros_control.so" />

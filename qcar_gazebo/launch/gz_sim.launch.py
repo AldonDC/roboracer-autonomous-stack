@@ -1,9 +1,9 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, ExecuteProcess, RegisterEventHandler
+from launch.actions import IncludeLaunchDescription, ExecuteProcess, RegisterEventHandler, DeclareLaunchArgument, OpaqueFunction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.actions import Node
-from launch.substitutions import Command
+from launch.substitutions import Command, LaunchConfiguration
 from launch.event_handlers import OnProcessExit
 import os
 from ament_index_python.packages import get_package_share_path, get_package_share_directory
@@ -35,8 +35,7 @@ def start_vehicle_control():
             forward_velocity_controller,
             forward_position_controller)
 
-def generate_launch_description():
-
+def nodes_to_execute(context, *args, **kwargs):
     gazebo_launch_path = os.path.join(get_package_share_directory('ros_gz_sim'), 'launch')
 
     # gazebo_world_path = os.path.join(get_package_share_path('qcar_gazebo'),
@@ -57,6 +56,10 @@ def generate_launch_description():
     vehicle_params_path = os.path.join(get_package_share_path('qcar_gazebo'),
                                        'config', 'ego_params.yaml')
 
+    is_ign_param = LaunchConfiguration('is_ign')
+
+    is_ign = str(is_ign_param.perform(context))
+
     robot_description = ParameterValue(Command(
         ["xacro",
          " ",
@@ -66,7 +69,10 @@ def generate_launch_description():
          "true",
          " ",
          "prefix:=",
-         ""
+         "",
+         " ",
+         "is_ign:=",
+         is_ign
         ]), value_type=str)
 
     robot_state_publisher_node = Node(
@@ -120,8 +126,8 @@ def generate_launch_description():
                                    executable='vehicle_controller',
                                    parameters=[vehicle_params_path],
                                    output='screen')
-
-    return LaunchDescription([
+    
+    return [
         RegisterEventHandler(
             event_handler=OnProcessExit(target_action=spawn_entity_node,
                                         on_exit=[joint_state])),
@@ -135,4 +141,17 @@ def generate_launch_description():
         rviz2_node,
         vehicle_controller_node,
         bridge_node
-    ])
+        ]
+
+def generate_launch_description():
+
+    # Declare launch arguments for Xacro parameters
+    ign_arg = DeclareLaunchArgument(
+        'is_ign', 
+        default_value= 'false',
+        description='Parameter file with all property values of the robot'
+    )
+
+    return LaunchDescription([
+        ign_arg
+        ] + [OpaqueFunction(function=nodes_to_execute)])

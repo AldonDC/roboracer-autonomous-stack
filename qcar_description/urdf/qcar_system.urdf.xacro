@@ -5,6 +5,7 @@
   <!-- Enable setting arguments from the launch file -->
   <xacro:arg name="use_fake_hardware" default="true" />
   <xacro:arg name="fake_sensor_commands" default="false" />
+  <xacro:arg name="is_ign" default="false" />
   <xacro:arg name="prefix" default="" />
 
   <xacro:include filename="$(find qcar_description)/urdf/qcar_ros2.urdf.xacro" />
@@ -12,9 +13,22 @@
   <!-- Import all Gazebo-customization elements, including Gazebo colors -->
   <xacro:include filename="$(find qcar_description)/urdf/qcar.gazebo.xacro" />
 
+  <!-- Import Rviz colors -->
+  <!-- <xacro:include filename="$(find qcar_description)/urdf/qcar.materials.xacro" /> -->
+
+  <!-- Import diffbot ros2_control description -->
+  <!-- <xacro:include filename="$(find qcar_description)/ros2_control/qcar_system.ros2_control.xacro" /> -->
+  
+  <!-- Used for fixing robot -->
+  <!-- <link name="world"/> -->
+  <!-- <gazebo reference="world">
+    <static>false</static>
+  </gazebo> -->
+
   <xacro:QCar parent="world" prefix="$(arg prefix)">
     <origin xyz="0 0 0" rpy="0 0 0" />
   </xacro:QCar>
 
+  <xacro:qcar_gazebo is_ign="$(arg is_ign)"/>
   <!-- <xacro:QCar_control name="QCar" prefix="$(arg prefix)"/> -->
 </robot>
