@@ -137,8 +137,8 @@ Your config should now look like this:
 
 ```ini
 [wsl2]
-swap=8589934592
-memory=25769803776
+swap=8589934592  <--- This line is optional
+memory=25769803776  <--- This line is optional
 networkingMode=mirrored
 ```
 
@@ -174,6 +174,21 @@ New-NetFirewallRule -DisplayName "ROS2 UDP 7400-7600" -Direction Inbound -Action
 
 ```powershell
 New-NetFirewallRule -DisplayName "ROS2 UDP 7400-7600 Outbound" -Direction Outbound -Action Allow -Protocol UDP -LocalPort 7400-7600
+```
+When working locally, sometimes it is more useful to return to the original WSL configuration. In the config file
+
+```powershell
+notepad .wslconfig
+```
+Revert from this 
+```ini
+networkingMode=mirrored
+```
+
+to this:
+
+```ini
+networkingMode=NAT
 ```
 
 ## References
