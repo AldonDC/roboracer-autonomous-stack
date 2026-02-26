@@ -24,7 +24,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'img_processor = vision_helpers_pkg.image_processor:main'
+            'img_processor = vision_helpers_pkg.image_processor:main',
+            'lane_detector = vision_helpers_pkg.lane_detector:main'
         ],
     },
 )

@@ -28,7 +28,8 @@ setup(
     entry_points={
         'console_scripts': [
             'holonomic_joy_control = control_helpers_pkg.holonomic_joystick_control:main',
-            'qcar2_joy_control = control_helpers_pkg.qcar2_joystick_controller:main'
+            'qcar2_joy_control = control_helpers_pkg.qcar2_joystick_controller:main',
+            'lane_follower_q = control_helpers_pkg.lane_follower_q:main'
         ],
     },
 )

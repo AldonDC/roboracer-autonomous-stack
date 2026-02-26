@@ -24,12 +24,16 @@ class ImageProcessor(Node):
         # self.get_logger().info('Receiving video frame') # Uncomment for debugging
         current_frame = self.br.imgmsg_to_cv2(data, "bgr8")
         
-        # --- Image Processing Logic ---
-        gray_frame = cv2.cvtColor(current_frame, cv2.COLOR_BGR2GRAY)
-        
-        # Display the processed frame
-        cv2.imshow("Grayscale Feed", gray_frame)
-        cv2.waitKey(1)
+        if current_frame is not None:
+            try: 
+                # --- Image Processing Logic ---
+                gray_frame = cv2.cvtColor(current_frame, cv2.COLOR_BGR2GRAY)
+                
+                # Display the processed frame
+                cv2.imshow("Grayscale Feed", gray_frame)
+                cv2.waitKey(1)
+            except:
+                return
 
 def main(args=None):
     rclpy.init(args=args)
