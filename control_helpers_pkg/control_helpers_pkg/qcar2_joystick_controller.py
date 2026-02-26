@@ -32,11 +32,15 @@ class Qcar2JoyControl(Node):
 
         self.timer_ = self.create_timer(0.01, self.timer_callback)
 
-        self.get_logger().info(f'Node successfully started Publishing to topic: {publish_topic}.\nLeft stick controls angular velocity, RT controls linear velocity, and button 0 the linear velocity direction')
+        self.get_logger().info(f'Node successfully started Publishing to topic: {publish_topic}.\nLeft stick controls angular velocity, RT(R2) controls linear velocity, and button A(X) the linear velocity direction\n\
+                               For reduced speed mode (1/10th) keep pressed LB(L1) button.')
 
     def key_listener_callback(self, msg):
         self.steering_angle_= msg.axes[0] * self.max_steering_angle_
-        self.linear_vel_ = abs((1. - msg.axes[5])) * self.max_linear_vel_
+        if msg.buttons[4]:
+            self.linear_vel_ = abs((1. - msg.axes[5])) * self.max_linear_vel_/10
+        else:
+            self.linear_vel_ = abs((1. - msg.axes[5])) * self.max_linear_vel_
 
         if msg.buttons[0]:
             self.linear_vel_ *= -1
