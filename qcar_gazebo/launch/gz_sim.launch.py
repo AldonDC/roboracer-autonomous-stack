@@ -140,7 +140,7 @@ def nodes_to_execute(context, *args, **kwargs):
         display_robot_gazebo,
         spawn_entity_node,
         robot_state_publisher_node,
-        # rviz2_node,
+        rviz2_node,
         vehicle_controller_node,
         bridge_node
         ]

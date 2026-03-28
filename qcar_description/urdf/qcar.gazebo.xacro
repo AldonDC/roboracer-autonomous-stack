@@ -273,6 +273,22 @@
         </ray>
       </sensor>
     </gazebo>
+
+    <gazebo reference="imu">
+      <sensor name="imu" type="imu">
+        <always_on>1</always_on>
+        <update_rate>60.0</update_rate>
+        <visualize>true</visualize>
+        <topic>imu</topic>
+        <imu>
+          <orientation_reference_frame>
+            <localization>GRAV_UP</localization>
+          </orientation_reference_frame>
+        </imu>
+      <!-- Sensor |camera,ray,imu,magnetometer,gps,force_torque,contact,sonar,rfidtag,rfid| -->
+      </sensor>
+      
+    </gazebo>
     
     <gazebo>
       <xacro:unless value="${is_ign}">
