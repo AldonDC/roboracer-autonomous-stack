@@ -4,6 +4,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/float64.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
+#include "geometry_msgs/msg/vector3_stamped.hpp"
 
 class VehicleController : public rclcpp::Node
 {
@@ -50,32 +51,19 @@ private:
   void timer_callback();
 
   /**
-   * @brief Callback function for receiving and handling desired steering angle.
+   * @brief Callback function for receiving and handling desired user commands.
    * 
-   * @details This callback updates the steering angle based on the input message and clamps 
-   * the value to the maximum allowable steering angle. The function calculates the 
-   * corresponding Ackermann steering angles for the left and right wheels and updates 
-   * the internal state of the controller.
-   * 
-   * @param msg A shared pointer to the incoming message containing the steering angle [rad].
-   */
-  void steering_angle_callback(const std_msgs::msg::Float64::SharedPtr msg);
-
-  /**
-   * @brief Callback function for receiving and handling desired velocity.
-   * 
-   * @details This callback updates the vehicle velocity based on the input message and clamps 
-   * the value to the maximum allowable velocity. The function calculates the wheel 
+   * @details This callback updates the vehicle velocity and steering angele based on the input message and clamps 
+   * the values to the maximum allowable velocity and steering angle. The function calculates the wheel 
    * velocities based on the rear differential model and updates the internal state 
    * with the corresponding angular velocities of the wheels.
    * 
-   * @param msg A shared pointer to the incoming message containing the velocity [m/s].
+   * @param msg A shared pointer to the incoming message containing the velocity [m/s] and steering_angle [rad].
    */
-  void velocity_callback(const std_msgs::msg::Float64::SharedPtr msg);
+  void user_command_callback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg);
 
   double timeout_duration_;
-  rclcpp::Time last_velocity_time_;
-  rclcpp::Time last_steering_time_;
+  rclcpp::Time last_command_time_;
 
   double body_width_;
   double body_length_;
@@ -92,8 +80,7 @@ private:
   std::vector<double> wheel_angular_velocity_;
   std::vector<double> wheel_steering_angle_;
 
-  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr steering_angle_subscriber_;
-  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr velocity_subscriber_;
+  rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr user_command_subscriber_;
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr position_publisher_;
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr velocity_publisher_;
   rclcpp::TimerBase::SharedPtr timer_;

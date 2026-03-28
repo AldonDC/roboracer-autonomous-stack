@@ -5,6 +5,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/joy.hpp"
 #include "std_msgs/msg/float64.hpp"
+#include "geometry_msgs/msg/vector3_stamped.hpp"
 
 class JoystickController : public rclcpp::Node
 {
@@ -34,8 +35,9 @@ private:
   void timer_callback();
 
   rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr subscriber_;
-  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr steering_angle_publisher_;
-  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr velocity_publisher_;
+  // rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr steering_angle_publisher_;
+  // rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr velocity_publisher_;
+  rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr user_command_publisher_;
   rclcpp::TimerBase::SharedPtr timer_;
 
   double max_steering_angle_;

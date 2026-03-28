@@ -20,8 +20,9 @@ JoystickController::JoystickController(const double timer_period) :
     "joy", 1, std::bind(&JoystickController::listener_callback, this, std::placeholders::_1));
 
   // Publishers for /angle and /velocity topics
-  steering_angle_publisher_ = create_publisher<std_msgs::msg::Float64>("/steering_angle", 1);
-  velocity_publisher_ = create_publisher<std_msgs::msg::Float64>("/velocity", 1);
+  // steering_angle_publisher_ = create_publisher<std_msgs::msg::Float64>("/steering_angle", 1);
+  // velocity_publisher_ = create_publisher<std_msgs::msg::Float64>("/velocity", 1);
+  user_command_publisher_ = create_publisher<geometry_msgs::msg::Vector3Stamped>("/qcar_sim/user_command", 1);
 
   // Timer to periodically publish the desired angle and velocity
   timer_ = create_wall_timer(std::chrono::duration<double>(timer_period),
@@ -37,15 +38,22 @@ void JoystickController::listener_callback(const sensor_msgs::msg::Joy::SharedPt
 
 void JoystickController::timer_callback()
 {
-  // Publish the desired angle
-  auto angle_msg{std::make_shared<std_msgs::msg::Float64>()};
-  angle_msg->data = steering_angle_;
-  steering_angle_publisher_->publish(*angle_msg);
+  // // Publish the desired angle
+  // auto angle_msg{std::make_shared<std_msgs::msg::Float64>()};
+  // angle_msg->data = steering_angle_;
+  // steering_angle_publisher_->publish(*angle_msg);
 
-  // Publish the desired velocity
-  auto velocity_msg{std::make_shared<std_msgs::msg::Float64>()};
-  velocity_msg->data = velocity_;
-  velocity_publisher_->publish(*velocity_msg);
+  // // Publish the desired velocity
+  // auto velocity_msg{std::make_shared<std_msgs::msg::Float64>()};
+  // velocity_msg->data = velocity_;
+  // velocity_publisher_->publish(*velocity_msg);
+
+  // Publish the desired angle
+  auto user_command_msg{std::make_shared<geometry_msgs::msg::Vector3Stamped>()};
+  user_command_msg->header.stamp = get_clock()->now();
+  user_command_msg->vector.y = steering_angle_;
+  user_command_msg->vector.x = velocity_;
+  user_command_publisher_->publish(*user_command_msg);
 }
 
 int main(int argc, char** argv)
