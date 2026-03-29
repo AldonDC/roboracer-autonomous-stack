@@ -283,6 +283,18 @@ limitations under the License.
     </joint>
     <link name="camera_csi_left"/>
 
+    <joint name="imu_joint" type="fixed">
+        <!-- <axis xyz="0 1 0" /> -->
+        <!-- <origin xyz=".2 0 0" rpy="0 0 0"/> -->
+        <!-- ___________________xyz is wrong, need to update_______________________________ -->
+        <!-- <origin rpy="0 0 1.5708" xyz="0.12784 0.052497 0.093029"/> -->
+         <origin rpy="0 0 0" xyz="0.1278 0.0223 0.087229"/>
+        <!-- <origin rpy="0 0 0" xyz="0 0 0"/> -->
+        <parent link="base"/>
+        <child link="imu"/>
+    </joint>
+    <link name="imu"/>
+
     <!-- <transmission name="body_lidar_tran">
         <type>>transmission_interface/SimpleTransmission</type>
         <joint name="body_lidar_joint">

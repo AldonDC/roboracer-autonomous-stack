@@ -3,8 +3,7 @@
 VehicleController::VehicleController(const double timer_period, const double timeout_duration) :
   Node{"vehicle_controller"},
   timeout_duration_{timeout_duration},
-  last_velocity_time_{get_clock()->now()},
-  last_steering_time_{get_clock()->now()},
+  last_command_time_{get_clock()->now()},
   body_width_{0.0},
   body_length_{0.0},
   wheel_radius_{0.0},
@@ -43,12 +42,8 @@ VehicleController::VehicleController(const double timer_period, const double tim
 //   wheel_base_ = body_length_ - (2 * wheel_radius_);
 
   // Subscribers
-  steering_angle_subscriber_ = create_subscription<std_msgs::msg::Float64>(
-    "/steering_angle", 10,
-    std::bind(&VehicleController::steering_angle_callback, this, std::placeholders::_1));
-
-  velocity_subscriber_ = create_subscription<std_msgs::msg::Float64>(
-    "/velocity", 10, std::bind(&VehicleController::velocity_callback, this, std::placeholders::_1));
+  user_command_subscriber_ = create_subscription<geometry_msgs::msg::Vector3Stamped>(
+    "/qcar_sim/user_command", 10, std::bind(&VehicleController::user_command_callback, this, std::placeholders::_1));
 
   // Publishers
   position_publisher_ = create_publisher<std_msgs::msg::Float64MultiArray>(
@@ -137,18 +132,12 @@ std::tuple<double, double, double> VehicleController::rear_differential_velocity
 void VehicleController::timer_callback()
 {
   const auto current_time{get_clock()->now()};
-  const auto velocity_elapsed_time{(current_time - last_velocity_time_).nanoseconds()};
-  const auto steering_elapsed_time{(current_time - last_steering_time_).nanoseconds()};
+  const auto command_elapsed_time{(current_time - last_command_time_).nanoseconds()};
 
-  // Reset velocity to zero if timeout
-  if (velocity_elapsed_time > timeout_duration_) {
-    //wheel_angular_velocity_ = {0.0, 0.0};
-    wheel_angular_velocity_ = {0.0, 0.0, 0.0};
-  }
-
-  // Reset steering angle to zero if timeout
-  if (steering_elapsed_time > timeout_duration_) {
+  // Reset steering angle and velocity to zero if timeout
+  if (command_elapsed_time > timeout_duration_) {
     //wheel_steering_angle_ = {0.0, 0.0};
+    wheel_angular_velocity_ = {0.0, 0.0, 0.0};
     wheel_steering_angle_ = {0.0};
   }
 
@@ -163,36 +152,25 @@ void VehicleController::timer_callback()
   velocity_publisher_->publish(velocity_msg);
 }
 
-void VehicleController::steering_angle_callback(const std_msgs::msg::Float64::SharedPtr msg)
+void VehicleController::user_command_callback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg)
 {
-  last_steering_time_ = get_clock()->now();  // Update timestamp
+  last_command_time_ = msg->header.stamp;  // Update timestamp
 
-  if (msg->data > max_steering_angle_) {
-    steering_angle_ = max_steering_angle_;
-  } else if (msg->data < -max_steering_angle_) {
-    steering_angle_ = -max_steering_angle_;
-  } else {
-    steering_angle_ = msg->data;
-  }
-
-  const auto wheel_angles{ackermann_steering_angle()};
-
-  //wheel_steering_angle_ = {wheel_angles.first, wheel_angles.second};
-  wheel_steering_angle_ = {wheel_angles};
-}
-
-void VehicleController::velocity_callback(const std_msgs::msg::Float64::SharedPtr msg)
-{
-  last_velocity_time_ = get_clock()->now();  // Update timestamp
-
-  if (msg->data > max_velocity_) {
+  if (msg->vector.x > max_velocity_) {
     velocity_ = max_velocity_;
-  } else if (msg->data < -max_velocity_) {
+  } else if (msg->vector.x < -max_velocity_) {
     velocity_ = -max_velocity_;
   } else {
-    velocity_ = msg->data;
+    velocity_ = msg->vector.x;
   }
 
+  if (msg->vector.y > max_steering_angle_) {
+    steering_angle_ = max_steering_angle_;
+  } else if (msg->vector.y < -max_steering_angle_) {
+    steering_angle_ = -max_steering_angle_;
+  } else {
+    steering_angle_ = msg->vector.y;
+  }
   const auto wheel_velocity{rear_differential_velocity()};
 
   // Convert wheel linear velocity to wheel angular velocity
@@ -202,6 +180,9 @@ void VehicleController::velocity_callback(const std_msgs::msg::Float64::SharedPt
     (std::get<0>(wheel_velocity) / wheel_radius_),
     (std::get<1>(wheel_velocity) / wheel_radius_),
     (std::get<2>(wheel_velocity) / wheel_radius_)};
+
+  const auto wheel_angles{ackermann_steering_angle()};
+  wheel_steering_angle_ = {wheel_angles};
 }
 
 int main(int argc, char** argv)

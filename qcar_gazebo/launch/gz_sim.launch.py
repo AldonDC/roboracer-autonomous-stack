@@ -128,7 +128,9 @@ def nodes_to_execute(context, *args, **kwargs):
     # Load vehicle controller node
     vehicle_controller_node = Node(package='qcar_gazebo',
                                    executable='vehicle_controller',
-                                   parameters=[vehicle_params_path],
+                                   parameters=[
+                                       {'use_sim_time': True}, 
+                                       vehicle_params_path],
                                    output='screen')
     
     return [
