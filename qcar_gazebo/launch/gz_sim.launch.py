@@ -1,5 +1,5 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, ExecuteProcess, RegisterEventHandler, DeclareLaunchArgument, OpaqueFunction
+from launch.actions import IncludeLaunchDescription, ExecuteProcess, RegisterEventHandler, DeclareLaunchArgument, OpaqueFunction, SetEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.actions import Node
@@ -38,9 +38,9 @@ def start_vehicle_control():
 def nodes_to_execute(context, *args, **kwargs):
     gazebo_launch_path = os.path.join(get_package_share_directory('ros_gz_sim'), 'launch')
 
-    # gazebo_world_path = os.path.join(get_package_share_path('qcar_gazebo'),
-    #                                  'worlds', 'my_first_world.sdf')
-    gazebo_world_path = 'empty.sdf'
+    gazebo_world_path = os.path.join(get_package_share_path('qcar_gazebo'),
+                                     'worlds', 'test_world.sdf')
+    # gazebo_world_path = 'empty.sdf'
 
     # display_launch_path = os.path.join(get_package_share_directory('differential_robot_description'), 'launch')
 
@@ -100,7 +100,11 @@ def nodes_to_execute(context, *args, **kwargs):
         package="ros_gz_sim",
         executable="create",
         arguments=['-topic', '/robot_description',
-                   '-entity', 'qcar']
+                   '-entity', 'qcar',
+                   '-x', '-1.2711',
+                   '-y', '-2.5010',
+                   '-z', '0.0025',
+                   '-Y', '-0.7405']
     )
 
     bridge_node = Node(
@@ -152,6 +156,13 @@ def generate_launch_description():
         description='Parameter file with all property values of the robot'
     )
 
+    models_path = os.path.join(get_package_share_path('qcar_gazebo'), 'models')
+
     return LaunchDescription([
+        # Set the Gazebo resource path to include your custom models
+        SetEnvironmentVariable(
+            name='GZ_SIM_RESOURCE_PATH',
+            value=[models_path, ':', os.environ.get('GZ_SIM_RESOURCE_PATH', '')]
+        ),
         ign_arg
         ] + [OpaqueFunction(function=nodes_to_execute)])
