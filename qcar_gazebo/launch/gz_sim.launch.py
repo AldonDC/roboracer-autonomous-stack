@@ -40,7 +40,7 @@ def nodes_to_execute(context, *args, **kwargs):
 
     gazebo_world_path = os.path.join(get_package_share_path('qcar_gazebo'),
                                      'worlds', 'test_world.sdf')
-    # gazebo_world_path = 'empty.sdf'
+    gazebo_world_path = 'empty.sdf'
 
     # display_launch_path = os.path.join(get_package_share_directory('differential_robot_description'), 'launch')
 

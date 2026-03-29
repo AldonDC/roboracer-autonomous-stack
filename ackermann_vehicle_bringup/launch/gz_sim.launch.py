@@ -1,5 +1,5 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
+from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, SetEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.actions import Node
@@ -13,6 +13,11 @@ def generate_launch_description():
 
     gz_launch_path = os.path.join(get_package_share_directory('ros_gz_sim'), 'launch')
 
+    gazebo_world_path = os.path.join(get_package_share_path('qcar_gazebo'),
+                                     'worlds', 'test_world.sdf')
+    
+    # gazebo_world_path = 'empty.sdf'
+
     urdf_path = os.path.join(robot_description_pkg,
                              'urdf', 'ackermann_robot.urdf.xacro')
     
@@ -24,6 +29,8 @@ def generate_launch_description():
     
     gz_bridge_config_path = os.path.join(get_package_share_path('ackermann_vehicle_bringup'),
                                         'config', 'gz_bridge.yaml')
+    
+    models_path = os.path.join(get_package_share_path('qcar_gazebo'), 'models')
 
     # Declare launch arguments for Xacro parameters
     robot_parameters_file_arg = DeclareLaunchArgument(
@@ -55,7 +62,7 @@ def generate_launch_description():
         PythonLaunchDescriptionSource([
             gz_launch_path,
             "/gz_sim.launch.py"
-        ]), launch_arguments={'gz_args': 'empty.sdf -r'}.items()
+        ]), launch_arguments={'gz_args':f'{gazebo_world_path} -r -v 4'}.items()
     )
 
     gz_create_entity_node = Node(
@@ -79,6 +86,11 @@ def generate_launch_description():
 
 
     return LaunchDescription([
+        # Set the Gazebo resource path to include your custom models
+        SetEnvironmentVariable(
+            name='GZ_SIM_RESOURCE_PATH',
+            value=[models_path, ':', os.environ.get('GZ_SIM_RESOURCE_PATH', '')]
+        ),
         robot_parameters_file_arg,
         robot_state_publisher_node,
         gz_sim_launch,

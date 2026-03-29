@@ -19,9 +19,7 @@ JoystickController::JoystickController(const double timer_period) :
   subscriber_ = create_subscription<sensor_msgs::msg::Joy>(
     "joy", 1, std::bind(&JoystickController::listener_callback, this, std::placeholders::_1));
 
-  // Publishers for /angle and /velocity topics
-  // steering_angle_publisher_ = create_publisher<std_msgs::msg::Float64>("/steering_angle", 1);
-  // velocity_publisher_ = create_publisher<std_msgs::msg::Float64>("/velocity", 1);
+  // Publishers
   user_command_publisher_ = create_publisher<geometry_msgs::msg::Vector3Stamped>("/qcar_sim/user_command", 1);
 
   // Timer to periodically publish the desired angle and velocity
@@ -31,24 +29,20 @@ JoystickController::JoystickController(const double timer_period) :
 
 void JoystickController::listener_callback(const sensor_msgs::msg::Joy::SharedPtr msg)
 {
-  // Set the desired angle and desired velocity based on the joystick's axis
-  steering_angle_ = msg->axes[0] * max_steering_angle_;
-  velocity_ = msg->axes[3] * max_velocity_;
+  if (msg->buttons[4] == 1) {
+    // Set the desired angle and desired velocity based on the joystick's axis
+    steering_angle_ = std::clamp(msg->axes[0] * max_steering_angle_, -0.3, 0.3);
+    velocity_ = 0.5 * abs(msg->axes[5] - 1.0) * max_velocity_;
+    if (msg->buttons[0] == 1) {
+      velocity_ = -velocity_;
+    }
+  }
+  
 }
 
 void JoystickController::timer_callback()
 {
-  // // Publish the desired angle
-  // auto angle_msg{std::make_shared<std_msgs::msg::Float64>()};
-  // angle_msg->data = steering_angle_;
-  // steering_angle_publisher_->publish(*angle_msg);
-
-  // // Publish the desired velocity
-  // auto velocity_msg{std::make_shared<std_msgs::msg::Float64>()};
-  // velocity_msg->data = velocity_;
-  // velocity_publisher_->publish(*velocity_msg);
-
-  // Publish the desired angle
+  // Publish the desired angle and velocity as a Vector3Stamped message
   auto user_command_msg{std::make_shared<geometry_msgs::msg::Vector3Stamped>()};
   user_command_msg->header.stamp = get_clock()->now();
   user_command_msg->vector.y = steering_angle_;
