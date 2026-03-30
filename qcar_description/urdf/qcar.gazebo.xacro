@@ -360,8 +360,15 @@
       </joint>
 
       <joint name="right_steering_joint">
-        <param name="mimic">left_steering_joint</param> <!-- Command this joint -->
-        <param name="multiplier">1</param> <!-- Move in the opposite direction -->
+        <command_interface name="position">
+          <param name="min">${-max_steering_angle}</param>
+          <param name="max">${max_steering_angle}</param>
+        </command_interface>
+        
+        <!-- Command this joint -->
+        <!-- <param name="mimic">left_steering_joint</param>  -->
+        <!-- Move in the opposite direction -->
+        <!-- <param name="multiplier">1</param>  -->
 
         <state_interface name="position"/>
         <state_interface name="velocity"/>
@@ -369,10 +376,12 @@
       </joint>
 
       <joint name="right_front_axle">
-        <command_interface name="velocity">
+        <param name="mimic">right_rear_axle</param>
+        <param name="multiplier">1</param> 
+        <!-- <command_interface name="velocity">
           <param name="min">${-axle_vel_limit}</param>
           <param name="max">${axle_vel_limit}</param>
-        </command_interface>
+        </command_interface> -->
 
         <state_interface name="position"/>
         <state_interface name="velocity"/>
@@ -380,8 +389,12 @@
       </joint>
 
       <joint name="left_front_axle">
-        <param name="mimic">right_front_axle</param> <!-- Command this joint -->
-        <param name="multiplier">-1</param> <!-- Move in the opposite direction -->
+        <param name="mimic">left_rear_axle</param>
+        <param name="multiplier">1</param> 
+        <!-- <command_interface name="velocity">
+          <param name="min">${-axle_vel_limit}</param>
+          <param name="max">${axle_vel_limit}</param>
+        </command_interface> -->
 
         <state_interface name="position"/>
         <state_interface name="velocity"/>

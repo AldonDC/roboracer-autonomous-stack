@@ -7,23 +7,87 @@
   </gazebo>
 
   <gazebo reference="front_right_wheel_link">
-    <mu1>10.0</mu1>
-    <mu2>10.0</mu2>
+    <collision>
+      <surface>
+        <friction>
+          <ode>
+            <mu>0.90000000000000002</mu>
+            <mu2>0.90000000000000002</mu2>
+            <slip1>0</slip1>
+            <slip2>0</slip2>
+          </ode>
+        </friction>
+        <contact>
+          <ode>
+            <kp>1000000000</kp>
+            <min_depth>0.001</min_depth> 
+          </ode>
+        </contact>
+      </surface>
+    </collision>
   </gazebo>
 
   <gazebo reference="front_left_wheel_link">
-    <mu1>10.0</mu1>
-    <mu2>10.0</mu2>
+    <collision>
+      <surface>
+        <friction>
+          <ode>
+            <mu>0.90000000000000002</mu>
+            <mu2>0.90000000000000002</mu2>
+            <slip1>0</slip1>
+            <slip2>0</slip2>
+          </ode>
+        </friction>
+        <contact>
+          <ode>
+            <kp>1000000000</kp>
+            <min_depth>0.001</min_depth> 
+          </ode>
+        </contact>
+      </surface>
+    </collision>
   </gazebo>
     
   <gazebo reference="rear_right_wheel_link">
-    <mu1>10.0</mu1>
-    <mu2>10.0</mu2>
+    <collision>
+      <surface>
+        <friction>
+          <ode>
+            <mu>1.1000000000000001</mu>
+            <mu2>1.1000000000000001</mu2>
+            <slip1>0</slip1>
+            <slip2>0</slip2>
+          </ode>
+        </friction>
+        <contact>
+          <ode>
+            <kp>1000000000</kp>
+            <min_depth>0.001</min_depth> 
+          </ode>
+        </contact>
+      </surface>
+    </collision>
   </gazebo>
 
   <gazebo reference="rear_left_wheel_link">
-    <mu1>10.0</mu1>
-    <mu2>10.0</mu2>
+    <collision>
+      <surface>
+        <friction>
+          <ode>
+            <mu>1.1000000000000001</mu>
+            <mu2>1.1000000000000001</mu2>
+            <slip1>0</slip1>
+            <slip2>0</slip2>
+          </ode>
+        </friction>
+        <contact>
+          <ode>
+            <kp>1000000000</kp>
+            <min_depth>0.001</min_depth> 
+          </ode>
+        </contact>
+      </surface>
+    </collision>
   </gazebo>
 
   <!-- Gazebo Plugins -->

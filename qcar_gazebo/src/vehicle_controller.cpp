@@ -14,8 +14,8 @@ VehicleController::VehicleController(const double timer_period, const double tim
   track_width_{0.0},
   steering_angle_{0.0},
   velocity_{0.0},
-  wheel_angular_velocity_{0.0, 0.0, 0.0},
-  wheel_steering_angle_{0.0}
+  wheel_angular_velocity_{0.0, 0.0},
+  wheel_steering_angle_{0.0, 0.0}
 {
   // Declare the used parameters
   declare_parameter<double>("body_width", 0.0);
@@ -57,7 +57,8 @@ VehicleController::VehicleController(const double timer_period, const double tim
                              std::bind(&VehicleController::timer_callback, this));
 }
 
-double VehicleController::ackermann_steering_angle()
+std::pair<double, double> VehicleController::ackermann_steering_angle()
+// double VehicleController::ackermann_steering_angle()
 {
   double left_wheel_angle{0.0};
   double right_wheel_angle{0.0};
@@ -84,11 +85,12 @@ double VehicleController::ackermann_steering_angle()
     }
   }
 
-//   return std::make_pair(left_wheel_angle, right_wheel_angle);
-  return (left_wheel_angle + right_wheel_angle)/2; 
+  return std::make_pair(left_wheel_angle, right_wheel_angle);
+  // return (left_wheel_angle + right_wheel_angle)/2; 
 }
 
-std::tuple<double, double, double> VehicleController::rear_differential_velocity()
+std::pair<double, double> VehicleController::rear_differential_velocity()
+// std::tuple<double, double, double> VehicleController::rear_differential_velocity()
 {
   double left_wheel_velocity{velocity_};
   double right_wheel_velocity{velocity_};
@@ -125,8 +127,8 @@ std::tuple<double, double, double> VehicleController::rear_differential_velocity
     }
   }
 
-//   return std::make_pair(left_wheel_velocity, right_wheel_velocity);
-  return std::tuple(left_wheel_velocity, right_wheel_velocity, (left_wheel_velocity + right_wheel_velocity)/2);
+  return std::make_pair(right_wheel_velocity, left_wheel_velocity);
+  // return std::tuple(right_wheel_velocity, left_wheel_velocity, right_wheel_velocity);
 }
 
 void VehicleController::timer_callback()
@@ -136,9 +138,10 @@ void VehicleController::timer_callback()
 
   // Reset steering angle and velocity to zero if timeout
   if (command_elapsed_time > timeout_duration_) {
-    //wheel_steering_angle_ = {0.0, 0.0};
-    wheel_angular_velocity_ = {0.0, 0.0, 0.0};
-    wheel_steering_angle_ = {0.0};
+    wheel_steering_angle_ = {0.0, 0.0};
+    wheel_angular_velocity_ = {0.0, 0.0};
+    // wheel_angular_velocity_ = {0.0, 0.0, 0.0};
+    // wheel_steering_angle_ = {0.0};
   }
 
   // Publish steering position
@@ -174,15 +177,15 @@ void VehicleController::user_command_callback(const geometry_msgs::msg::Vector3S
   const auto wheel_velocity{rear_differential_velocity()};
 
   // Convert wheel linear velocity to wheel angular velocity
-//   wheel_angular_velocity_ = {(wheel_velocity.first / wheel_radius_),
-//                              (wheel_velocity.second / wheel_radius_)};
-  wheel_angular_velocity_ = {
-    (std::get<0>(wheel_velocity) / wheel_radius_),
-    (std::get<1>(wheel_velocity) / wheel_radius_),
-    (std::get<2>(wheel_velocity) / wheel_radius_)};
+  wheel_angular_velocity_ = {(wheel_velocity.first / wheel_radius_),
+                             (wheel_velocity.second / wheel_radius_)};
+  // wheel_angular_velocity_ = {
+  //   (std::get<0>(wheel_velocity) / wheel_radius_),
+  //   (std::get<1>(wheel_velocity) / wheel_radius_),
+  //   (std::get<2>(wheel_velocity) / wheel_radius_)};
 
   const auto wheel_angles{ackermann_steering_angle()};
-  wheel_steering_angle_ = {wheel_angles};
+  wheel_steering_angle_ = {wheel_angles.first, wheel_angles.second};
 }
 
 int main(int argc, char** argv)

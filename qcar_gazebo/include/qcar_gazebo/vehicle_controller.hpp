@@ -24,7 +24,8 @@ private:
    * 
    * @return A pair of left and right steering angles [rad].
    */
-  double ackermann_steering_angle();
+  std::pair<double, double> ackermann_steering_angle();
+  // double ackermann_steering_angle();
 
   /**
    * @brief Calculates the rear differential wheel velocities for a vehicle with a rear 
@@ -38,8 +39,8 @@ private:
    * 
    * @return A pair of left and right wheel velocities [m/s].
    */
-//   std::pair<double, double> rear_differential_velocity();
-  std::tuple<double, double, double> rear_differential_velocity();
+  std::pair<double, double> rear_differential_velocity();
+  // std::tuple<double, double, double> rear_differential_velocity();
   /**
    * @brief Periodically checks for timeout and publishes steering angles and wheel velocities.
    * 

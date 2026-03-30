@@ -16,7 +16,8 @@ forward_velocity_controller:
     joints:
       - right_rear_axle
       - left_rear_axle
-      - right_front_axle
+      # - right_front_axle
+      # - left_front_axle
     interface_name: velocity
     command_interfaces:
       - velocity
@@ -28,7 +29,7 @@ forward_position_controller:
   ros__parameters:
     joints:
       - left_steering_joint
-      # - front_right_steering_joint
+      - right_steering_joint
     interface_name: position
     command_interfaces:
       - position

@@ -40,7 +40,7 @@ def nodes_to_execute(context, *args, **kwargs):
 
     gazebo_world_path = os.path.join(get_package_share_path('qcar_gazebo'),
                                      'worlds', 'test_world.sdf')
-    gazebo_world_path = 'empty.sdf'
+    # gazebo_world_path = 'empty.sdf'
 
     # display_launch_path = os.path.join(get_package_share_directory('differential_robot_description'), 'launch')
 
@@ -101,10 +101,10 @@ def nodes_to_execute(context, *args, **kwargs):
         executable="create",
         arguments=['-topic', '/robot_description',
                    '-entity', 'qcar',
-                   '-x', '-1.2711',
-                   '-y', '-2.5010',
-                   '-z', '0.0025',
-                   '-Y', '-0.7405']
+                   '-x', '-0.1375',#'-x', '-1.2711',
+                   '-y', '0.32',#'-y', '-1.667',#'-y', '-2.5010',
+                   '-z', '0.0025',#'-z', '0.0025',
+                   '-Y', '-1.57079633']#'-Y', '-0.7405']
     )
 
     bridge_node = Node(

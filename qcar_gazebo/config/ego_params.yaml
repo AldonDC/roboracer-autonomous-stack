@@ -14,7 +14,7 @@
     wheel_mass: 0.035 # Mass of the wheel material [kg]
 
     # Kinematics and dynamics params
-    max_steering_angle: 0.5236 # Maximum steering angle of the vehicle [rad]
+    max_steering_angle: 0.523 # Maximum steering angle of the vehicle [rad]
     max_steering_angular_velocity: 1.570796 # Maximum steering angular velocity [rad/s]
     max_steering_effort: 1.0 # Maximum steering torque [Nm]
     max_velocity: 4.458883 # Maximum wheel velocity [m/s]
