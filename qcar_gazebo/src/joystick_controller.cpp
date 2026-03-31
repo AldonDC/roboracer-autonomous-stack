@@ -32,7 +32,11 @@ void JoystickController::listener_callback(const sensor_msgs::msg::Joy::SharedPt
   if (msg->buttons[4] == 1) {
     // Set the desired angle and desired velocity based on the joystick's axis
     steering_angle_ = std::clamp(msg->axes[0] * max_steering_angle_, -0.3, 0.3);
-    velocity_ = 0.5 * abs(msg->axes[5] - 1.0) * max_velocity_;
+    if(msg->buttons[5] == 1){
+      velocity_ = 0.15 * max_velocity_;
+    }else{
+      velocity_ = 0.5 * abs(msg->axes[5] - 1.0) * max_velocity_;
+    }
     if (msg->buttons[0] == 1) {
       velocity_ = -velocity_;
     }

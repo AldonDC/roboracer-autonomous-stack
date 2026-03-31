@@ -41,7 +41,6 @@ limitations under the License.
   <xacro:macro name="QCar" params="parent prefix *origin">
     <!-- includes -->
     <!-- <xacro:include filename="$(find qcar_description)/urdf/qcar.gazebo.xacro" /> -->
-    <xacro:include filename="$(find qcar_description)/urdf/qcar.materials.xacro" />
 
     <!-- Degree-to-radian conversions -->
     <xacro:property name="degrees_30" value="0.523599"/>

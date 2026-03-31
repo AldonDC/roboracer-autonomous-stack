@@ -1,7 +1,9 @@
 <?xml version="1.0"?>
 <robot name="QCar" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <xacro:macro name="qcar_gazebo" params="is_ign">
+  <xacro:macro name="qcar_gazebo" params="is_ign sensors_params_file">
+
+    <xacro:read_sensor_config_data qcar_sensors_params_file="${sensors_params_file}"/>
     <xacro:property name="max_steering_angle" value="0.3"/>
     <xacro:property name="axle_vel_limit" value="244.8696"/>
 
@@ -20,19 +22,19 @@
       <!-- <material>Gazebo/Green</material> -->
       <sensor type="camera" name="intelrealsense_rgb">
         <always_on>1</always_on>
-        <update_rate>60.0</update_rate>
+        <update_rate>${rgb_update_rate}</update_rate>
         <visualize>true</visualize>
         <topic>qcar/rgb/image_raw</topic>
         <camera name="rgb">
           <horizontal_fov>1.21126</horizontal_fov>
           <image>
-              <width>640</width>
-              <height>480</height>
+              <width>${rgbd_width}</width>
+              <height>${rgbd_height}</height>
               <format>R8G8B8</format>
           </image>
           <clip>
-              <near>0.02</near>
-              <far>300</far>
+              <near>${rgbd_clip_near}</near>
+              <far>${rgbd_clip_far}</far>
           </clip>
           <noise>
               <type>gaussian</type>
@@ -66,19 +68,19 @@
       <!-- <material>Gazebo/Green</material> -->
       <sensor type="camera" name="csi_front">
         <always_on>1</always_on>
-        <update_rate>60.0</update_rate>
+        <update_rate>${csi_update_rate}</update_rate>
         <visualize>true</visualize>
         <topic>qcar/csi_front/image_raw</topic>
         <camera name="front">
           <horizontal_fov>2.79253</horizontal_fov>
           <image>
-              <width>1280</width>
-              <height>640</height>
+              <width>${csi_width}</width>
+              <height>${csi_height}</height>
               <format>R8G8B8</format>
           </image>
           <clip>
-              <near>0.02</near>
-              <far>300</far>
+              <near>${csi_clip_near}</near>
+              <far>${csi_clip_far}</far>
           </clip>
           <noise>
               <type>gaussian</type>
@@ -112,19 +114,19 @@
       <!-- <material>Gazebo/Green</material> -->
       <sensor type="camera" name="csi_right">
         <always_on>1</always_on>
-        <update_rate>60.0</update_rate>
+        <update_rate>${csi_update_rate}</update_rate>
         <visualize>true</visualize>
         <topic>qcar/csi_right/image_raw</topic>
         <camera name="right">
           <horizontal_fov>2.79253</horizontal_fov>
           <image>
-              <width>1280</width>
-              <height>640</height>
+              <width>${csi_width}</width>
+              <height>${csi_height}</height>
               <format>R8G8B8</format>
           </image>
           <clip>
-              <near>0.02</near>
-              <far>300</far>
+              <near>${csi_clip_near}</near>
+              <far>${csi_clip_far}</far>
           </clip>
           <noise>
               <type>gaussian</type>
@@ -158,19 +160,19 @@
       <!-- <material>Gazebo/Green</material> -->
       <sensor type="camera" name="csi_left">
         <always_on>1</always_on>
-        <update_rate>60.0</update_rate>
+        <update_rate>${csi_update_rate}</update_rate>
         <visualize>true</visualize>
         <topic>qcar/csi_left/image_raw</topic>
         <camera name="front">
           <horizontal_fov>2.79253</horizontal_fov>
           <image>
-              <width>1280</width>
-              <height>640</height>
+              <width>${csi_width}</width>
+              <height>${csi_height}</height>
               <format>R8G8B8</format>
           </image>
           <clip>
-              <near>0.02</near>
-              <far>300</far>
+              <near>${csi_clip_near}</near>
+              <far>${csi_clip_far}</far>
           </clip>
           <noise>
               <type>gaussian</type>
@@ -204,19 +206,19 @@
       <!-- <material>Gazebo/Green</material> -->
       <sensor type="camera" name="csi_back">
         <always_on>1</always_on>
-        <update_rate>60.0</update_rate>
+        <update_rate>${csi_update_rate}</update_rate>
         <visualize>true</visualize>
         <topic>qcar/csi_back/image_raw</topic>
         <camera name="front">
           <horizontal_fov>2.79253</horizontal_fov>
           <image>
-              <width>1280</width>
-              <height>640</height>
+              <width>${csi_width}</width>
+              <height>${csi_height}</height>
               <format>R8G8B8</format>
           </image>
           <clip>
-              <near>0.02</near>
-              <far>300</far>
+              <near>${csi_clip_near}</near>
+              <far>${csi_clip_far}</far>
           </clip>
           <noise>
               <type>gaussian</type>
@@ -240,15 +242,15 @@
       <!-- <material>Gazebo/Black</material> -->
       <sensor type="gpu_lidar" name="rplidar_a2m8">
         <always_on>true</always_on>
-        <pose>0 0 0 0 0 0</pose>
+        <pose>0 0 0.0114 0 0 0</pose>
         <visualize>true</visualize>
-        <update_rate>10</update_rate>
+        <update_rate>${lidar_update_rate}</update_rate>
         <topic>scan</topic>
         <gz_frame_id>lidar</gz_frame_id>
         <ray>
             <scan>
                 <horizontal>
-                    <samples>800</samples>
+                    <samples>${lidar_num_points}</samples>
                     <resolution>1</resolution>
                     <!-- <min_angle>-1.570796</min_angle>
                     <max_angle>1.570796</max_angle> -->
@@ -257,8 +259,8 @@
                 </horizontal>
             </scan>
             <range>
-                <min>0.20</min>
-                <max>12.0</max>
+                <min>${lidar_min_range}</min>
+                <max>${lidar_max_range}</max>
                 <resolution>0.01</resolution>
             </range>
             <noise>
@@ -277,7 +279,7 @@
     <gazebo reference="imu">
       <sensor name="imu" type="imu">
         <always_on>1</always_on>
-        <update_rate>60.0</update_rate>
+        <update_rate>${imu_update_rate}</update_rate>
         <visualize>true</visualize>
         <topic>imu</topic>
         <imu>

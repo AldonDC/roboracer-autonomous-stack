@@ -7,7 +7,9 @@
   <xacro:arg name="fake_sensor_commands" default="false" />
   <xacro:arg name="is_ign" default="false" />
   <xacro:arg name="prefix" default="" />
-
+  <xacro:arg name="sensors_params_file" default="$(find qcar_description)/config/sensor_params.yaml"/>
+    
+  <xacro:include filename="$(find qcar_description)/urdf/qcar.materials.xacro" />
   <xacro:include filename="$(find qcar_description)/urdf/qcar_ros2.urdf.xacro" />
 
   <!-- Import all Gazebo-customization elements, including Gazebo colors -->
@@ -29,6 +31,6 @@
     <origin xyz="0 0 0" rpy="0 0 0" />
   </xacro:QCar>
 
-  <xacro:qcar_gazebo is_ign="$(arg is_ign)"/>
+  <xacro:qcar_gazebo is_ign="$(arg is_ign)" sensors_params_file="$(arg sensors_params_file)"/>
   <!-- <xacro:QCar_control name="QCar" prefix="$(arg prefix)"/> -->
 </robot>
