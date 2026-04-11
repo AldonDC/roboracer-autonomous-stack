@@ -1,4 +1,6 @@
 from setuptools import find_packages, setup
+import os
+from glob import glob
 
 package_name = 'vision_helpers_pkg'
 
@@ -10,6 +12,7 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -25,6 +28,7 @@ setup(
     entry_points={
         'console_scripts': [
             'img_processor = vision_helpers_pkg.image_processor:main',
+            'img_converter = vision_helpers_pkg.image_converter:main',
             'lane_detector = vision_helpers_pkg.lane_detector:main'
         ],
     },
