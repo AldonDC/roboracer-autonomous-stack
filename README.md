@@ -6,7 +6,7 @@
 > Última actualización: Abril 2026
 
 <div align="center">
-  <video src="docs/assets/demo_rviz.webm" width="100%" autoplay loop muted playsinline></video>
+  <video src="https://github.com/AldonDC/roboracer-autonomous-stack/raw/main/docs/assets/demo_rviz.webm" width="100%" autoplay loop muted playsinline controls></video>
 </div>
 
 ---
@@ -19,7 +19,7 @@ Diseñar y desplegar un **software stack completo** para carreras autónomas de 
 ## 🏛️ 2. Arquitectura del Sistema (Gazebo + RViz)
 
 ### 2.1. Migración de la Pista a Gazebo
-Para tener un entorno de pruebas hiperrealista, se recreó la pista oficial de la competencia dentro de **Gazebo Harmonic**. 
+Para tener un entorno de pruebas hiperrealista, se recreó la pista oficial de la competencia dentro de **Gazebo Harmonic**.
 
 * **Mesh 3D (`qcar_track.obj`)**: Se importó el modelo 3D exacto de la pista con sus texturas mapeadas (`SDCS_MapLayout.png`).
 * **Mundo de Gazebo (`test_world.sdf`)**: Se configuró utilizando los plugins físicos nativos (`dartsim`). La pista se carga estáticamente junto a barreras perimetrales (walls) para contener al carro.
@@ -99,7 +99,7 @@ roboracer-autonomous-stack/
 │   │       └── track_visualizer.py     # RViz Mesh Exporter
 │   ├── roboracer/                    # 🚗 HARDWARE / ROBOT / MUNDOS
 │   │   ├── roboracer_description/    # Specs físicas del QCar 3D, Sensores, RViz config
-│   │   ├── roboracer_gazebo/         # Escenarios de Gazebo Harmonic y Puentes físicos 
+│   │   ├── roboracer_gazebo/         # Escenarios de Gazebo Harmonic y Puentes físicos
 │   │   └── roboracer_interfaces/     # Serialización de Mensajes dedicados de ROS 2
 │   └── support/                      # Librerías heredadas (cámaras, modelos del profe)
 └── README.md                         # Documentación Root
