@@ -5,6 +5,10 @@
 > Asesores: Dr. Daniel Sosa-Ceron · Dr. Jorge A. Reyes-Avendaño
 > Última actualización: Abril 2026
 
+<div align="center">
+  <video src="docs/assets/demo_rviz.webm" width="100%" autoplay loop muted playsinline></video>
+</div>
+
 ---
 
 ## 📋 1. Ojetivo del Proyecto
