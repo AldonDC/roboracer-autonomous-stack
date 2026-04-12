@@ -74,7 +74,34 @@ El core de lógica customizada habita en el paquete `roboracer_racing`.
 
 ---
 
-## 🚀 5. Manual Rápido (Comandos de Uso)
+## 📂 5. Estructura del Proyecto
+
+A continuación se muestra cómo está organizado el código dentro del repositorio, separando claramente lo que es configuración de simulación y lo que es lógica de carreras:
+
+```text
+roboracer-autonomous-stack/
+├── docs/                             # Documentación extendida
+├── scripts/
+│   ├── build.sh                      # Script para compilar el código rápidamente
+│   └── launch_sim.sh                 # Máster script para arrancar Gazebo, RViz y Bridges
+├── src/
+│   ├── racing_logic/                 # 🧠 AQUÍ VIVE LA INTELIGENCIA
+│   │   └── roboracer_racing/         # Nuestro paquete principal de Python
+│   │       ├── multi_goal_navigator.py # CLI Planner y Lógica Pure Pursuit
+│   │       ├── odom_tf_broadcaster.py  # Sincronizador de coordenadas
+│   │       ├── track_visualizer.py     # Dibuja la pista en RViz
+│   │       └── keyboard_teleop.py      # Conducción manual
+│   ├── roboracer/                    # 🚗 SIMULACIÓN Y ROBOT
+│   │   ├── roboracer_description/    # Modelos 3D (URDF), Sensores y config de RViz
+│   │   ├── roboracer_gazebo/         # El Mundo de Gazebo (Pistas, Muros) y el Bridge
+│   │   └── roboracer_interfaces/     # Mensajes customizados de ROS 2
+│   └── support/                      # Nodos helpers y librerías externas de cámaras
+└── README.md                         # Este documento
+```
+
+---
+
+## 🚀 6. Manual Rápido (Comandos de Uso)
 
 ### Paso 1: Lanzar la Simulación (Terminal 1)
 ```bash
@@ -106,7 +133,7 @@ ros2 run roboracer_racing multi_goal
 
 ---
 
-## 📊 6. Plan de Trabajo Restante
+## 📊 7. Plan de Trabajo Restante
 
 **✅ Fase 1: Simulación y RViz Completa** (Gazebo y Visualización estables).
 **✅ Fase 2: Control Time-Trial Básico** (Pure pursuit + GUI/CLI).
