@@ -14,7 +14,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import Vector3Stamped, PointStamped, PoseStamped
 from nav_msgs.msg import Odometry, Path
 from visualization_msgs.msg import Marker, MarkerArray
-from std_msgs.msg import Empty
+from std_msgs.msg import Empty, Float32MultiArray
 import math
 import numpy as np
 import threading
@@ -64,6 +64,7 @@ class MultiGoalNavigator(Node):
         self.marker_array_pub = self.create_publisher(MarkerArray, '/viz/waypoints', 10)
         self.path_pub = self.create_publisher(Path, '/viz/waypoint_path', 10)
         self.hud_pub = self.create_publisher(Marker, '/viz/nav_hud', 10)
+        self.telemetry_pub = self.create_publisher(Float32MultiArray, '/viz/telemetry', 10)
 
         # Subscribers
         odom_topic = self.get_parameter('odom_topic').value
@@ -90,7 +91,7 @@ class MultiGoalNavigator(Node):
         self.get_logger().info('🗺️  MULTI-GOAL NAVIGATOR LISTO')
         self.get_logger().info('   👆 Usa "Publish Point" en RViz para armar la ruta.')
         self.get_logger().info('   ⌨️  Usa la consola de esta terminal para dar comandos (Go, Clear, Save)')
-        
+
         # Hilo para leer comandos de terminal
         self.cmd_thread = threading.Thread(target=self.terminal_cmd_loop, daemon=True)
         self.cmd_thread.start()
@@ -105,7 +106,7 @@ class MultiGoalNavigator(Node):
         print("   [s] Save (Guarda ruta a JSON)")
         print("   [q] Quit")
         print("="*50 + "\n")
-        
+
         while True:
             cmd = input("roboracer> ").strip().lower()
             if cmd == 'g':
@@ -320,6 +321,12 @@ class MultiGoalNavigator(Node):
         cmd.vector.x = float(final_v)
         cmd.vector.y = float(delta)
         self.cmd_pub.publish(cmd)
+
+        # Publicar telemetría
+        telemetry = Float32MultiArray()
+        # [Vel_Target, Vel_Actual, Steering, Error_Distance]
+        telemetry.data = [float(v_target), float(final_v), float(delta), float(dist)]
+        self.telemetry_pub.publish(telemetry)
 
         # HUD
         hud = Marker()

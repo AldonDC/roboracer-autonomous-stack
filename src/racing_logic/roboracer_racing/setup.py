@@ -32,6 +32,7 @@ setup(
             'odom_tf = roboracer_racing.odom_tf_broadcaster:main',
             'track_viz = roboracer_racing.track_visualizer:main',
             'planner_gui = roboracer_racing.waypoint_planner_gui:main',
+            'telemetry = roboracer_racing.telemetry_dashboard:main',
         ],
     },
 )
