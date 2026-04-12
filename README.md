@@ -63,40 +63,42 @@ $$
 
 ## ⚙️ 4. Nodos de Software (`roboracer_racing`)
 
-El core de lógica customizada habita en el paquete `roboracer_racing`.
+El *core* de nuestra lógica customizada habita en el paquete `roboracer_racing` y se divide en módulos modulares y de responsabilidad única:
 
-| Nodo (Python) | Descripción |
-|:--------------|:------------|
-| `multi_goal_navigator.py` | **Manejador Maestro**. Lee los clicks del "Publish Point" en RViz, acumula los waypoints, calcula la cinemática Pure Pursuit en tiempo real, y expone un CLI asíncrono para dar la orden de inicio (`[g] Go`). |
-| `odom_tf_broadcaster.py` | **Puente Espacial**. Lee `/qcar_sim/odom` y emite el *Transform Tree* oficial. |
-| `track_visualizer.py` | **Pintor 3D**. Inserta el mapa de Gazebo dentro de RViz. |
-| `keyboard_teleop.py` | **Conducción Mánual**. Script WASD de precisión para dominar la pista. |
+| Nodo (Python) | Descripción Técnica y Funcionalidad Destacada |
+|:--------------|:----------------------------------------------|
+| `multi_goal_navigator.py` | **Manejador Maestro (Planner).** Lee `PointStamped` del "Publish Point" en RViz y construye una trayectoria. <br>✅ **CLI Asíncrono**: Permite controlar la carrera vía terminal (`[g] Go`, `[c] Clear`, `[s] Save`, `[q] Quit`).<br>✅ **Persistencia JSON**: Guarda la ruta perfecta en `/routes` y permite recargarla en el futuro con precisión quirúrgica.<br>✅ **Pure Pursuit Engine**: Corre el loop de control principal calculando las velocidades relativas a 50 Hz. |
+| `telemetry_dashboard.py` | **Telemetría Estilo MATLAB.** Gráficas *Data-Science* en tiempo real.<br>✅ **FuncAnimation**: Gráficas de deslizamiento (*scrolling windows*) de los últimos 10 segundos.<br>✅ **HUD Numérico**: Cuadros dinámicos *Over-the-top* con valores calculados de V_ref, Steering State y Error con formato Ingenieril.<br>✅ **Sombreado Analítico**: Renderiza bandas de colores (Verde/Admisible, Rojo/Peligro) y rellena el área bajo la curva del *tracking error*. |
+| `odom_tf_broadcaster.py` | **Puente Espacial.** Lee `/qcar_sim/odom` originado por Gazebo y expone el *Transform Tree* (`world` → `base_link`) para que RViz acople el modelo 3D del carro perfectamente con la física real. |
+| `track_visualizer.py` | **Pintor 3D de RViz.** Extrapola los vértices del `.obj` de la pista de Gazebo y transmite un `visualization_msgs/Marker` gigante a RViz, permitiendo ver la pista real como plantilla y referencia topológica. |
+| `keyboard_teleop.py` | **Conducción Mánual.** Script WASD de precisión para validación de hardware y trazado empírico inicial. |
 
 ---
 
 ## 📂 5. Estructura del Proyecto
 
-A continuación se muestra cómo está organizado el código dentro del repositorio, separando claramente lo que es configuración de simulación y lo que es lógica de carreras:
+A continuación se muestra cómo está organizado el código dentro del repositorio. Notarás la estricta separación de responsabilidades: *Simulators, Algorithms, and Support*.
 
 ```text
 roboracer-autonomous-stack/
-├── docs/                             # Documentación extendida
+├── docs/                             # Documentación Técnica Formal
 ├── scripts/
-│   ├── build.sh                      # Script para compilar el código rápidamente
-│   └── launch_sim.sh                 # Máster script para arrancar Gazebo, RViz y Bridges
+│   ├── build.sh                      # Helper builder para ROS 2
+│   └── launch_sim.sh                 # Máster Node Launcher para Gazebo
 ├── src/
-│   ├── racing_logic/                 # 🧠 AQUÍ VIVE LA INTELIGENCIA
+│   ├── racing_logic/                 # 🧠 AQUÍ VIVE LA INTELIGENCIA ARTIFICIAL (ALGORITMOS)
 │   │   └── roboracer_racing/         # Nuestro paquete principal de Python
-│   │       ├── multi_goal_navigator.py # CLI Planner y Lógica Pure Pursuit
-│   │       ├── odom_tf_broadcaster.py  # Sincronizador de coordenadas
-│   │       ├── track_visualizer.py     # Dibuja la pista en RViz
-│   │       └── keyboard_teleop.py      # Conducción manual
-│   ├── roboracer/                    # 🚗 SIMULACIÓN Y ROBOT
-│   │   ├── roboracer_description/    # Modelos 3D (URDF), Sensores y config de RViz
-│   │   ├── roboracer_gazebo/         # El Mundo de Gazebo (Pistas, Muros) y el Bridge
-│   │   └── roboracer_interfaces/     # Mensajes customizados de ROS 2
-│   └── support/                      # Nodos helpers y librerías externas de cámaras
-└── README.md                         # Este documento
+│   │       ├── routes/               # Archivos JSON autogenerados de "perfect laps"
+│   │       ├── multi_goal_navigator.py # Loop principal (CLI + Pure Pursuit)
+│   │       ├── telemetry_dashboard.py  # GUI de Instrumentación Analítica MATLAB
+│   │       ├── odom_tf_broadcaster.py  # Sistema de Referencia Geométrico
+│   │       └── track_visualizer.py     # RViz Mesh Exporter
+│   ├── roboracer/                    # 🚗 HARDWARE / ROBOT / MUNDOS
+│   │   ├── roboracer_description/    # Specs físicas del QCar 3D, Sensores, RViz config
+│   │   ├── roboracer_gazebo/         # Escenarios de Gazebo Harmonic y Puentes físicos 
+│   │   └── roboracer_interfaces/     # Serialización de Mensajes dedicados de ROS 2
+│   └── support/                      # Librerías heredadas (cámaras, modelos del profe)
+└── README.md                         # Documentación Root
 ```
 
 ---
@@ -110,16 +112,17 @@ cd ~/Documents/Assesment-Auto
 ```
 *Esto arranca Gazebo con el QCar, la pista, inicializa los puentes ROS y abre RViz listo.*
 
-### Paso 2: Preparar Control y CLI (Terminal 2)
+### Paso 2: Preparar Control, Telemetría y CLI (Terminal 2)
 ```bash
 source /opt/ros/jazzy/setup.bash
 cd ~/Documents/Assesment-Auto
 colcon build --symlink-install
 source install/setup.bash
 
-# Lanzamos el sincronizador de RViz y la pista (corriendo de fondo)
+# Lanzamos el sincronizador de RViz, pista y telemetría (corriendo de fondo)
 ros2 run roboracer_racing odom_tf &
 ros2 run roboracer_racing track_viz &
+ros2 run roboracer_racing telemetry &
 
 # Lanzamos el Controlador Multipunto CLI
 ros2 run roboracer_racing multi_goal
