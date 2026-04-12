@@ -36,7 +36,10 @@ El seguimiento autónomo de ruta (Waypoint Navigation) utiliza una variante mejo
 El objetivo de Pure Pursuit es encontrar el ángulo de giro (steering angle $\delta$) que mantenga al carro sobre un arco circular que intersecte un objetivo a una distancia $L_d$ (Lookahead Distance).
 
 **Ecuación de Dirección:**
-$$ \delta = \arctan\left(\frac{2L \sin(\alpha)}{L_d}\right) $$
+
+$$
+\delta = \arctan\left(\frac{2L \sin(\alpha)}{L_d}\right)
+$$
 
 Donde:
 * $L$ = Distancia entre ejes del carro (0.256m).
@@ -48,7 +51,11 @@ Nuestro controlador no mantiene velocidad constante, en su lugar, analiza la agu
 
 1. **Clip de Dirección**: El ángulo $\delta$ jamás supera `max_steer` (0.5 rad).
 2. **Curve Factor**: Calculamos qué tanto está girando el volante relativo al límite.
-   $$ C_f = 1.0 - 0.4 \left|\frac{\delta}{\delta_{max}}\right| $$
+
+   $$
+   C_f = 1.0 - 0.4 \left|\frac{\delta}{\delta_{max}}\right|
+   $$
+
 3. **Velocidad de Salida**: Reducimos el `v_ref` (velocidad objetivo) proporcionalmente al *Curve Factor*. Si el carro va recto, asume el 100% de vel; si gira brusco, cae al 60%.
 4. **Aceleración Ramp-up**: Perfil de aceleración/frenado escalonado (`+0.02 m/s` acelerando, `-0.04 m/s` frenando) eliminando jalones mecánicos.
 
