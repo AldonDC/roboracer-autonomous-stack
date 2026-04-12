@@ -1,0 +1,134 @@
+"""
+Track Visualizer — Publica el mesh de la pista como un Marker en RViz.
+
+Esto permite ver la pista de Gazebo directamente en RViz para
+colocar goals con precisión.
+"""
+import rclpy
+from rclpy.node import Node
+from visualization_msgs.msg import Marker
+from ament_index_python.packages import get_package_share_directory
+import os
+
+
+class TrackVisualizer(Node):
+    def __init__(self):
+        super().__init__('track_visualizer')
+
+        self.marker_pub = self.create_publisher(Marker, '/viz/track', 10)
+
+        # Publicar cada 2 segundos (latched marker)
+        self.timer = self.create_timer(2.0, self.publish_track)
+
+        # Encontrar el mesh de la pista
+        pkg_dir = get_package_share_directory('roboracer_gazebo')
+        self.track_mesh_path = os.path.join(pkg_dir, 'models', 'track', 'meshes', 'qcar_track.obj')
+
+        if os.path.exists(self.track_mesh_path):
+            self.get_logger().info(f'🏁 Track mesh found: {self.track_mesh_path}')
+        else:
+            self.get_logger().error(f'❌ Track mesh NOT found: {self.track_mesh_path}')
+
+        # Encontrar los meshes de las paredes
+        self.wall_pub = self.create_publisher(Marker, '/viz/walls', 10)
+        self.wall_timer = self.create_timer(2.0, self.publish_walls)
+
+        # Datos de las paredes desde el world file
+        self.walls = []
+
+        # Short walls (4.8m)
+        short_wall_mesh = os.path.join(pkg_dir, 'models', 'wall_4_8x0_25', 'meshes', 'wood_wall_short.obj')
+        if os.path.exists(short_wall_mesh):
+            self.walls.append({'mesh': short_wall_mesh, 'x': 0.0, 'y': -3.05, 'z': 0.125, 'yaw': 0.0})
+            self.walls.append({'mesh': short_wall_mesh, 'x': 0.0, 'y': 3.05, 'z': 0.125, 'yaw': 0.0})
+
+        # Long walls (6.1m)
+        long_wall_mesh = os.path.join(pkg_dir, 'models', 'wall_6_1x0_25', 'meshes', 'wood_wall_long.obj')
+        if os.path.exists(long_wall_mesh):
+            self.walls.append({'mesh': long_wall_mesh, 'x': 2.4, 'y': 0.0, 'z': 0.125, 'yaw': 1.5708})
+            self.walls.append({'mesh': long_wall_mesh, 'x': -2.4, 'y': 0.0, 'z': 0.125, 'yaw': 1.5708})
+
+        self.get_logger().info(f'🧱 Found {len(self.walls)} wall meshes')
+
+    def publish_track(self):
+        if not os.path.exists(self.track_mesh_path):
+            return
+
+        m = Marker()
+        m.header.frame_id = 'world'
+        m.header.stamp = self.get_clock().now().to_msg()
+        m.ns = 'track'
+        m.id = 0
+        m.type = Marker.MESH_RESOURCE
+        m.action = Marker.ADD
+        m.mesh_resource = f'file://{self.track_mesh_path}'
+        m.mesh_use_embedded_materials = True
+
+        # Posición del track (del world file)
+        m.pose.position.x = -0.0036
+        m.pose.position.y = 0.0002
+        m.pose.position.z = 0.0012
+        m.pose.orientation.w = 1.0
+
+        m.scale.x = 1.0
+        m.scale.y = 1.0
+        m.scale.z = 1.0
+
+        # Color fallback si no tiene materiales
+        m.color.r = 0.3
+        m.color.g = 0.3
+        m.color.b = 0.3
+        m.color.a = 0.8
+
+        self.marker_pub.publish(m)
+
+    def publish_walls(self):
+        import math
+        for i, wall in enumerate(self.walls):
+            m = Marker()
+            m.header.frame_id = 'world'
+            m.header.stamp = self.get_clock().now().to_msg()
+            m.ns = 'walls'
+            m.id = i
+            m.type = Marker.MESH_RESOURCE
+            m.action = Marker.ADD
+            m.mesh_resource = f'file://{wall["mesh"]}'
+            m.mesh_use_embedded_materials = True
+
+            m.pose.position.x = wall['x']
+            m.pose.position.y = wall['y']
+            m.pose.position.z = wall['z']
+
+            # Convertir yaw a quaternion
+            yaw = wall['yaw']
+            m.pose.orientation.z = math.sin(yaw / 2.0)
+            m.pose.orientation.w = math.cos(yaw / 2.0)
+
+            m.scale.x = 1.0
+            m.scale.y = 1.0
+            m.scale.z = 1.0
+
+            m.color.r = 0.6
+            m.color.g = 0.4
+            m.color.b = 0.2
+            m.color.a = 0.9
+
+            self.wall_pub.publish(m)
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = TrackVisualizer()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        try:
+            rclpy.shutdown()
+        except Exception:
+            pass
+
+if __name__ == '__main__':
+    main()

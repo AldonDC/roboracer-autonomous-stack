@@ -1,0 +1,8 @@
+source;share/roboracer_description/hook/cmake_prefix_path.ps1
+source;share/roboracer_description/hook/cmake_prefix_path.dsv
+source;share/roboracer_description/hook/cmake_prefix_path.sh
+source;share/roboracer_description/local_setup.bash
+source;share/roboracer_description/local_setup.dsv
+source;share/roboracer_description/local_setup.ps1
+source;share/roboracer_description/local_setup.sh
+source;share/roboracer_description/local_setup.zsh

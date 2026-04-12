@@ -1,0 +1,9 @@
+source;share/roboracer_racing/hook/pythonpath.ps1
+source;share/roboracer_racing/hook/pythonpath.dsv
+source;share/roboracer_racing/hook/pythonpath.sh
+source;share/roboracer_racing/hook/ament_prefix_path.ps1
+source;share/roboracer_racing/hook/ament_prefix_path.dsv
+source;share/roboracer_racing/hook/ament_prefix_path.sh
+source;../../build/roboracer_racing/share/roboracer_racing/hook/pythonpath_develop.ps1
+source;../../build/roboracer_racing/share/roboracer_racing/hook/pythonpath_develop.dsv
+source;../../build/roboracer_racing/share/roboracer_racing/hook/pythonpath_develop.sh

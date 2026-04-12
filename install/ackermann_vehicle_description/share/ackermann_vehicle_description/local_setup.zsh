@@ -1,0 +1,1 @@
+/home/alfonsd/Documents/Assesment-Auto/build/ackermann_vehicle_description/ament_cmake_environment_hooks/local_setup.zsh

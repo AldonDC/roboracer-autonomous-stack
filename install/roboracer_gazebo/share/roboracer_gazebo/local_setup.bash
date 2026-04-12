@@ -1,0 +1,1 @@
+/home/alfonsd/Documents/Assesment-Auto/build/roboracer_gazebo/ament_cmake_environment_hooks/local_setup.bash
