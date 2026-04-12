@@ -111,13 +111,13 @@ def main(args=None):
         curr_s = node.steering[-1]
         curr_e = node.dist_error[-1]
 
-        v_warn = "⚠️ DANGER" if curr_va > 1.5 else "✅ SAFE"
+        v_warn = "DANGER!!" if curr_va > 1.5 else "SAFE"
         text_v.set_text(f"ACTUAL: {curr_va:.2f} m/s | TARGET: {curr_vt:.2f} m/s [{v_warn}]")
 
-        s_warn = "⚠️ HARD TURN" if abs(curr_s) >= 0.5 else "✅ STABLE"
+        s_warn = "HARD TURN" if abs(curr_s) >= 0.5 else "STABLE"
         text_s.set_text(f"STEER: {curr_s:+.2f} rad [{s_warn}]")
 
-        e_warn = "🎯 ARRIVAL ZONE" if curr_e <= 0.5 else "🏁 RACING"
+        e_warn = "ARRIVAL ZONE" if curr_e <= 0.5 else "RACING"
         text_e.set_text(f"ERR DIST: {curr_e:.2f} m [{e_warn}]")
 
         # Scrolling x-axis
