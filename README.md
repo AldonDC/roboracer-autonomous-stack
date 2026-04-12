@@ -5,7 +5,7 @@
 > Asesores: Dr. Daniel Sosa-Ceron · Dr. Jorge A. Reyes-Avendaño
 > Última actualización: Abril 2026
 
-![RoboRacer Nav Demo](https://github.com/AldonDC/roboracer-autonomous-stack/raw/main/docs/assets/demo_rviz.webm)
+[**Ver Video Demostrativo del QCar (Navegación Pure Pursuit)**](https://github.com/AldonDC/roboracer-autonomous-stack/raw/main/docs/assets/demo_rviz.webm)
 
 ---
 
