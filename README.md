@@ -5,9 +5,7 @@
 > Asesores: Dr. Daniel Sosa-Ceron · Dr. Jorge A. Reyes-Avendaño
 > Última actualización: Abril 2026
 
-<div align="center">
-  <video src="https://github.com/AldonDC/roboracer-autonomous-stack/raw/main/docs/assets/demo_rviz.webm" width="100%" autoplay loop muted playsinline controls></video>
-</div>
+<video src="./docs/assets/demo_rviz.webm" width="100%" controls="controls" muted="muted" autoplay="autoplay" loop="loop"></video>
 
 ---
 
