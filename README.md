@@ -5,7 +5,7 @@
 > Asesores: Dr. Daniel Sosa-Ceron · Dr. Jorge A. Reyes-Avendaño
 > Última actualización: Abril 2026
 
-<video src="./docs/assets/demo_rviz.webm" width="100%" controls="controls" muted="muted" autoplay="autoplay" loop="loop"></video>
+![RoboRacer Nav Demo](https://github.com/AldonDC/roboracer-autonomous-stack/raw/main/docs/assets/demo_rviz.webm)
 
 ---
 
