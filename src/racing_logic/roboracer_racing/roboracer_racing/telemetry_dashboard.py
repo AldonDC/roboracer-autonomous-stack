@@ -49,85 +49,109 @@ def main(args=None):
     spin_thread = threading.Thread(target=rclpy.spin, args=(node,), daemon=True)
     spin_thread.start()
 
-    # -- MATPLOTLIB SETUP --
-    fig, (ax_v, ax_s, ax_e) = plt.subplots(3, 1, figsize=(8, 9))
-    fig.canvas.manager.set_window_title('RoboRacer Telemetry Pro')
-    fig.patch.set_facecolor('#1a1a2e')
-    
-    # Colores oscuros y pro
+    # -- MATLAB ENGINEERING AESTHETIC SETUP --
+    # Usar un estilo blanco, limpio con grids (típico de ingeniería/MATLAB)
+    plt.style.use('seaborn-v0_8-whitegrid')
+    fig, (ax_v, ax_s, ax_e) = plt.subplots(3, 1, figsize=(9, 10))
+    fig.canvas.manager.set_window_title('RoboRacer Engineering Telemetry')
+    fig.patch.set_facecolor('#F0F2F6') # Gris muy claro fondo
+    fig.suptitle('Control System Real-Time Telemetry', fontsize=16, fontweight='bold', color='#333333')
+
+    # Configuración base para todos los ejes
     for ax in [ax_v, ax_s, ax_e]:
-        ax.set_facecolor('#16213e')
-        ax.tick_params(colors='white')
-        ax.grid(True, color='#333333', linewidth=0.5)
+        ax.set_facecolor('#FFFFFF')
+        ax.grid(True, which='major', color='#D0D0D0', linestyle='-', linewidth=1.0)
+        ax.grid(True, which='minor', color='#E0E0E0', linestyle='--', linewidth=0.5)
+        ax.minorticks_on()
+        # Línea gruesa en el marco
         for spine in ax.spines.values():
-            spine.set_color('#555555')
+            spine.set_color('#888888')
+            spine.set_linewidth(1.5)
 
-    # --- VELOCITY PLOT ---
-    ax_v.axhspan(0.0, 1.5, color='#00ff88', alpha=0.05) # Safe Speed
-    ax_v.axhspan(1.5, 2.0, color='#ff4444', alpha=0.1)  # High Speed Danger
-    line_vt, = ax_v.plot([], [], '--', color='#aaaaaa', label='V Target', lw=2)
-    line_va, = ax_v.plot([], [], '-', color='#00ff88', label='V Actual', lw=2.5)
-    ax_v.set_ylabel('Velocity (m/s)', color='white')
-    ax_v.legend(loc='lower left', facecolor='#16213e', edgecolor='none', labelcolor='white')
+    # --- VELOCITY PLOT (System Response) ---
+    ax_v.set_title('Plant Response: Longitudinal Velocity', fontsize=12, fontweight='bold', loc='left')
+    ax_v.axhline(0, color='black', linewidth=1.5)
+    
+    line_vt, = ax_v.plot([], [], '--', color='tab:red', label='Target Reference ($v_{ref}$)', lw=2)
+    line_va, = ax_v.plot([], [], '-', color='tab:blue', label='Actual Velocity ($v$)', lw=2.5)
+    
+    # Text box ingeniero
+    text_v = ax_v.text(0.98, 0.90, '', transform=ax_v.transAxes, color='black', 
+                       fontsize=10, ha='right', va='top', bbox=dict(facecolor='white', alpha=0.9, edgecolor='#CCCCCC', boxstyle='round,pad=0.5'))
+    
+    ax_v.set_ylabel('Velocity [m/s]', fontweight='bold')
+    ax_v.legend(loc='lower left')
     ax_v.set_ylim(-0.1, 2.0)
-    text_v = ax_v.text(0.02, 0.90, '', transform=ax_v.transAxes, color='white', 
-                       fontsize=12, fontweight='bold', bbox=dict(facecolor='#000000', alpha=0.5, edgecolor='none'))
 
-    # --- STEERING PLOT ---
-    ax_s.axhspan(-0.5, 0.5, color='#00ff88', alpha=0.05) # Normal Steering
-    ax_s.axhspan(0.5, 0.6, color='#ff4444', alpha=0.15)  # Hard Left
-    ax_s.axhspan(-0.6, -0.5, color='#ff4444', alpha=0.15) # Hard Right
-    line_s, = ax_s.plot([], [], '-', color='#ffaa00', label='Steering (rad)', lw=2.5)
-    ax_s.set_ylabel('Steering', color='white')
-    ax_s.legend(loc='lower left', facecolor='#16213e', edgecolor='none', labelcolor='white')
+    # --- STEERING PLOT (Control Input) ---
+    ax_s.set_title('Control Effort: Ackermann Steering Limit', fontsize=12, fontweight='bold', loc='left')
+    ax_s.axhline(0, color='black', linewidth=1.5)
+    
+    # Zonas de saturación (rojas) del servo
+    ax_s.axhspan(0.5, 0.6, color='tab:red', alpha=0.1)
+    ax_s.axhspan(-0.6, -0.5, color='tab:red', alpha=0.1)
+    
+    line_s, = ax_s.plot([], [], '-', color='tab:orange', label='Steering Angle ($\delta$)', lw=2.5)
+    
+    text_s = ax_s.text(0.98, 0.90, '', transform=ax_s.transAxes, color='black', 
+                       fontsize=10, ha='right', va='top', bbox=dict(facecolor='white', alpha=0.9, edgecolor='#CCCCCC', boxstyle='round,pad=0.5'))
+                       
+    ax_s.set_ylabel('Angle [rad]', fontweight='bold')
     ax_s.set_ylim(-0.6, 0.6)
-    text_s = ax_s.text(0.02, 0.90, '', transform=ax_s.transAxes, color='white', 
-                       fontsize=12, fontweight='bold', bbox=dict(facecolor='#000000', alpha=0.5, edgecolor='none'))
 
-    # --- ERROR PLOT ---
-    ax_e.axhspan(0.0, 0.5, color='#00ff88', alpha=0.08) # Arrival Radius (Success)
-    line_e, = ax_e.plot([], [], '-', color='#ff4444', label='Dist. to Goal', lw=2.5)
-    ax_e.set_ylabel('Error Dist (m)', color='white')
-    ax_e.set_xlabel('Time (s)', color='white')
-    ax_e.legend(loc='lower left', facecolor='#16213e', edgecolor='none', labelcolor='white')
+    # --- ERROR PLOT (Tracking Performance) ---
+    ax_e.set_title('Tracking Performance: Dist. to Waypoint', fontsize=12, fontweight='bold', loc='left')
+    ax_e.axhline(0, color='black', linewidth=1.5)
+    
+    # Sombreado de tolerancia (banda verde de llegada)
+    ax_e.axhspan(0.0, 0.5, color='tab:green', alpha=0.15)
+    
+    line_e, = ax_e.plot([], [], '-', color='tab:purple', label='Distance Error ($e$)', lw=2.5)
+    
+    text_e = ax_e.text(0.98, 0.90, '', transform=ax_e.transAxes, color='black', 
+                       fontsize=10, ha='right', va='top', bbox=dict(facecolor='white', alpha=0.9, edgecolor='#CCCCCC', boxstyle='round,pad=0.5'))
+
+    ax_e.set_ylabel('Error [m]', fontweight='bold')
+    ax_e.set_xlabel('Time [s]', fontweight='bold')
     ax_e.set_ylim(0, 5)
-    text_e = ax_e.text(0.02, 0.90, '', transform=ax_e.transAxes, color='white', 
-                       fontsize=12, fontweight='bold', bbox=dict(facecolor='#000000', alpha=0.5, edgecolor='none'))
 
     def update(frame):
         if not node.times: return line_vt, line_va, line_s, line_e, text_v, text_s, text_e
         
         t = list(node.times)
         
-        # update arrays
         line_vt.set_data(t, list(node.v_target))
         line_va.set_data(t, list(node.v_actual))
         line_s.set_data(t, list(node.steering))
         line_e.set_data(t, list(node.dist_error))
 
-        # update text panels
+        # Rellenar (Fill Between) el error de velocidad en tiempo real
+        # Quitamos la colección previa para no sobrecargar RAM
+        for collection in ax_v.collections:
+            collection.remove()
+        ax_v.fill_between(t, list(node.v_actual), list(node.v_target), color='tab:gray', alpha=0.3)
+
         curr_vt = node.v_target[-1]
         curr_va = node.v_actual[-1]
         curr_s = node.steering[-1]
         curr_e = node.dist_error[-1]
 
-        v_warn = "DANGER!!" if curr_va > 1.5 else "SAFE"
-        text_v.set_text(f"ACTUAL: {curr_va:.2f} m/s | TARGET: {curr_vt:.2f} m/s [{v_warn}]")
+        # Formato Ingenieril tipo consola
+        text_v.set_text(f"v_ref: {curr_vt:.2f} m/s\nv_act: {curr_va:.2f} m/s\nError: {abs(curr_vt-curr_va):.2f} m/s")
+        
+        status_steer = "SATURATED" if abs(curr_s) >= 0.5 else "OPERATIONAL"
+        text_s.set_text(f"δ: {curr_s:+.3f} rad\nState: {status_steer}")
 
-        s_warn = "HARD TURN" if abs(curr_s) >= 0.5 else "STABLE"
-        text_s.set_text(f"STEER: {curr_s:+.2f} rad [{s_warn}]")
-
-        e_warn = "ARRIVAL ZONE" if curr_e <= 0.5 else "RACING"
-        text_e.set_text(f"ERR DIST: {curr_e:.2f} m [{e_warn}]")
+        status_err = "GOAL REACHED (<0.5)" if curr_e <= 0.5 else "TRACKING"
+        text_e.set_text(f"e(t): {curr_e:.2f} m\nPhase: {status_err}")
 
         # Scrolling x-axis
-        min_x = max(0, t[-1] - 10) # 10 seconds trailing window
+        min_x = max(0, t[-1] - 10)
         max_x = max(10, t[-1])
         
         for ax in [ax_v, ax_s, ax_e]:
             ax.set_xlim(min_x, max_x)
             
-        # Ajuste dinámico del error Y
         max_e = max(node.dist_error) if node.dist_error else 1.0
         ax_e.set_ylim(0, max((max_e * 1.1), 1.0))
         
@@ -136,14 +160,15 @@ def main(args=None):
     ani = animation.FuncAnimation(fig, update, interval=50, blit=False, cache_frame_data=False)
 
     plt.tight_layout()
+    # Ajustar para no tapar el suptitle
+    fig.subplots_adjust(top=0.92)
+    
     try:
         plt.show()
     except KeyboardInterrupt:
         pass
     finally:
         node.destroy_node()
-        # No disparamos rclpy.shutdown() directamente aquí porque
-        # puede causar errores de "already shutdown", o lo hacemos de forma segura:
         if rclpy.ok():
             rclpy.shutdown()
 
