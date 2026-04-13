@@ -53,11 +53,14 @@ Donde:
 El controlador implementa un esquema de **Velocidad de Curvatura Crítica** para asegurar la estabilidad lateral en giros cerrados:
 
 1. **Límite por Curvatura**: La velocidad se reduce inversamente al ángulo de dirección $\delta$.
-   $$V(\delta) = \frac{V_{ref}}{1 + k|\delta|}$$
-   Donde $k = 1.25$ es el coeficiente de agresividad de frenado.
+
+$$V(\delta) = \frac{V_{ref}}{1 + k|\delta|}$$
+
+Donde $k = 1.25$ es el coeficiente de agresividad de frenado.
 
 2. **Perfil de Arribo (S-Curve)**: Desaceleración suave basada en la raíz cuadrada de la distancia al objetivo, evitando el comportamiento oscilatorio cerca del waypoint.
-   $$V_{dist} = V_{ref} \cdot \sqrt{\max\left(0.2, \frac{d}{d_{range}}\right)}$$
+
+$$V_{dist} = V_{ref} \cdot \sqrt{\max\left(0.2, \frac{d}{d_{range}}\right)}$$
 
 3. **Filtro de Jerk**: El perfil de aceleración está limitado a $0.08\,m/s^2$ para proteger los actuadores mecánicos y evitar el deslizamiento de neumáticos.
 
@@ -69,6 +72,7 @@ Para la navegación reactiva, el QCar utiliza un esquema de **Campos de Potencia
 
 ### 4.1. Formalismo Matemático
 El potencial total $U(\mathbf{q})$ es la suma de una superficie atractiva y una repulsiva. La fuerza resultante es el gradiente negativo de dicho potencial:
+
 $$\mathbf{F}_{net} = -\nabla U_{att}(\mathbf{q}) - \nabla U_{rep}(\mathbf{q})$$
 
 **Fuerza Repulsiva de LiDAR:**
