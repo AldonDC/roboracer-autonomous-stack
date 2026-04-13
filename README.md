@@ -49,21 +49,37 @@ Donde:
 * $\alpha$ = Ángulo entre el heading actual del carro y el waypoint.
 * $L_d$ = Lookahead distance (dinámico basado en la distancia al punto).
 
-4. **Frenado por Curvatura**: La velocidad se ajusta dinámicamente según el ángulo de giro ($\delta$), permitiendo frenar antes de curvas cerradas:
-   $V_{target} = V_{ref} / (1 + 1.25 \cdot |\delta|)$.
-5. **Perfil S-Curve**: El arribo a waypoints usa un perfil de desaceleración cuadrática ($v = \sqrt{dist}$), eliminando los frenazos bruscos de versiones anteriores.
-6. **Aceleración Ramp-up**: Perfil suavizado para un "Premium Feel" y protección de motores simulados.
+### 3.2. Perfiles de Velocidad Inteligentes (v12)
+El controlador implementa un esquema de **Velocidad de Curvatura Crítica** para asegurar la estabilidad lateral en giros cerrados:
+
+1. **Límite por Curvatura**: La velocidad se reduce inversamente al ángulo de dirección $\delta$.
+   $$V(\delta) = \frac{V_{ref}}{1 + k|\delta|}$$
+   Donde $k = 1.25$ es el coeficiente de agresividad de frenado.
+
+2. **Perfil de Arribo (S-Curve)**: Desaceleración suave basada en la raíz cuadrada de la distancia al objetivo, evitando el comportamiento oscilatorio cerca del waypoint.
+   $$V_{dist} = V_{ref} \cdot \sqrt{\max\left(0.2, \frac{d}{d_{range}}\right)}$$
+
+3. **Filtro de Jerk**: El perfil de aceleración está limitado a $0.08\,m/s^2$ para proteger los actuadores mecánicos y evitar el deslizamiento de neumáticos.
 
 ---
 
-## 🛰️ 4. Evasión de Obstáculos y Campos de Potencia (APF)
+## 🛰️ 4. Evasión de Obstáculos: Artificial Potential Fields (APF)
 
-El QCar ya no solo sigue waypoints, sino que "siente" su entorno mediante **Campos de Potencial Artificiales (APF)**.
+Para la navegación reactiva, el QCar utiliza un esquema de **Campos de Potencial**, donde el entorno se modela como un terreno de energías.
 
-### 4.1. Fuerzas Atractivas y Repulsivas
-* **$F_{att}$ (Atrapamiento)**: Una fuerza elástica que tira del carro hacia el siguiente waypoint.
-* **$F_{rep}$ (Repulsión)**: Una fuerza invisible emitida por paredes y obstáculos. Se calcula con un filtro frontal de LiDAR y decae con el cuadrado de la distancia.
-* **Sesgo Lateral**: El algoritmo detecta si hay más espacio a la izquierda o derecha de un obstáculo para elegir el lado de evasión más seguro.
+### 4.1. Formalismo Matemático
+El potencial total $U(\mathbf{q})$ es la suma de una superficie atractiva y una repulsiva. La fuerza resultante es el gradiente negativo de dicho potencial:
+$$\mathbf{F}_{net} = -\nabla U_{att}(\mathbf{q}) - \nabla U_{rep}(\mathbf{q})$$
+
+**Fuerza Repulsiva de LiDAR:**
+Calculamos la fuerza emitida por cada cluster de obstáculos detectados por el láser:
+$$
+\mathbf{F}_{rep} = \begin{cases} 
+\eta \left( \frac{1}{\rho(\mathbf{q})} - \frac{1}{\rho_0} \right) \frac{1}{\rho^2(\mathbf{q})} \frac{\mathbf{q} - \mathbf{q}_{obs}}{\rho(\mathbf{q})} & \text{si } \rho(\mathbf{q}) \leq \rho_0 \\
+0 & \text{si } \rho(\mathbf{q}) > \rho_0
+\end{cases}
+$$
+Donde $\rho_0 = 1.1m$ es el radio de influencia y $\eta$ es el factor de escala de evasión.
 
 ### 4.2. Evasión Dinámica (2D Nav Goal)
 Desde RViz, el operador puede colocar **objetos físicos reales** en Gazebo. El sistema intercepta el clic de navegación, envía un comando al simulador para `spawnear` un cubo rojo, y el carro lo detecta inmediatamente tanto por LiDAR como por Cámara.
@@ -76,8 +92,8 @@ El *core* de nuestra lógica customizada habita en el paquete `roboracer_racing`
 
 | Nodo (Python) | Descripción Técnica y Funcionalidad Destacada |
 |:--------------|:----------------------------------------------|
-| `multi_goal_navigator.py` | **Manejador Maestro (Planner).** Lee `PointStamped` del "Publish Point" en RViz y construye una trayectoria. <br>✅ **CLI Asíncrono**: Permite controlar la carrera vía terminal (`[g] Go`, `[c] Clear`, `[s] Save`, `[q] Quit`).<br>✅ **Persistencia JSON**: Guarda la ruta perfecta en `/routes` y permite recargarla en el futuro con precisión quirúrgica.<br>✅ **Pure Pursuit Engine**: Corre el loop de control principal calculando las velocidades relativas a 50 Hz. |
-| `telemetry_dashboard.py` | **Estación de Ingeniería v11 (Minimalista).** <br>✅ **Blueprint Style**: Interfaz blanca de alta densidad para análisis de datos puro.<br>✅ **3-Cam Fusion**: Transmisión de 3 cámaras sincronizadas con detección de objetos y proyección de LiDAR superpuesta.<br>✅ **Métricas Derivadas**: Gráficas en tiempo real de Aceleración Gx, Margen de Seguridad (Clearance) e Intensidad de Fuerzas APF. |
+| `multi_goal_navigator.py` | **Planner & Controller (v12).** <br>✅ **Gazebo Spawner**: Interfaz directa para inyectar modelos 3D físicos en el simulador vía RViz.<br>✅ **Goal-Biased Gap Following**: Selección inteligente de huecos de escape alineada con la meta.<br>✅ **Unified APF Control**: Fusión de Pure Pursuit con gradientes de repulsión a 50Hz. |
+| `telemetry_dashboard.py` | **Engineering Station (v11).** <br>✅ **Blueprint Aesthetic**: Interfaz de alta densidad con paleta de colores profesional blanca/azul.<br>✅ **Perception Fusion**: Overlay de LiDAR sobre las cámaras y detección de objetos clusterizada.<br>✅ **Engineering Metrics**: Gráficas de aceleración Gx, fuerza APF e histéresis de dirección. |
 | `odom_tf_broadcaster.py` | **Puente Espacial.** Lee `/qcar_sim/odom` originado por Gazebo y expone el *Transform Tree* (`world` → `base_link`) para que RViz acople el modelo 3D del carro perfectamente con la física real. |
 | `track_visualizer.py` | **Pintor 3D de RViz.** Extrapola los vértices del `.obj` de la pista de Gazebo y transmite un `visualization_msgs/Marker` gigante a RViz, permitiendo ver la pista real como plantilla y referencia topológica. |
 | `keyboard_teleop.py` | **Conducción Mánual.** Script WASD de precisión para validación de hardware y trazado empírico inicial. |
