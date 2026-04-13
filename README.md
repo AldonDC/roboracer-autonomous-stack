@@ -75,9 +75,10 @@ El potencial total $U(\mathbf{q})$ es la suma de una superficie atractiva y una 
 
 $$\mathbf{F}_{net} = -\nabla U_{att}(\mathbf{q}) - \nabla U_{rep}(\mathbf{q})$$
 
-**Fuerza Repulsiva de LiDAR:**
 Calculamos la fuerza emitida por cada cluster de obstáculos detectados por el láser:
+
 $$\mathbf{F}_{rep} = \begin{cases} \eta \left( \frac{1}{\rho(\mathbf{q})} - \frac{1}{\rho_0} \right) \frac{1}{\rho^2(\mathbf{q})} \frac{\mathbf{q} - \mathbf{q}_{obs}}{\rho(\mathbf{q})} & \text{si } \rho(\mathbf{q}) \leq \rho_0 \\ 0 & \text{si } \rho(\mathbf{q}) > \rho_0 \end{cases}$$
+
 Donde $\rho_0 = 1.1m$ es el radio de influencia y $\eta$ es el factor de escala de evasión.
 
 ### 4.2. Evasión Dinámica (2D Nav Goal)
