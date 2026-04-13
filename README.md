@@ -3,6 +3,7 @@
 > **Alfonso D. — Tecnológico de Monterrey**
 > Materia: Assesment
 > Asesores: Dr. Daniel Sosa-Ceron · Dr. Jorge A. Reyes-Avendaño
+> Versión Actual: **v12.0 — Intelligent Racing Edition**
 > Última actualización: Abril 2026
 
 [**Ver Video Demostrativo del QCar (Navegación Pure Pursuit)**](https://github.com/AldonDC/roboracer-autonomous-stack/raw/main/docs/assets/demo_rviz.webm)
@@ -48,36 +49,42 @@ Donde:
 * $\alpha$ = Ángulo entre el heading actual del carro y el waypoint.
 * $L_d$ = Lookahead distance (dinámico basado en la distancia al punto).
 
-### 3.2. Mejoras Implementadas (Adaptive Speed)
-Nuestro controlador no mantiene velocidad constante, en su lugar, analiza la agudeza del giro para frenar antes de curvas cerradas:
-
-1. **Clip de Dirección**: El ángulo $\delta$ jamás supera `max_steer` (0.5 rad).
-2. **Curve Factor**: Calculamos qué tanto está girando el volante relativo al límite.
-
-$$
-C_f = 1.0 - 0.4 \left|\frac{\delta}{\delta_{max}}\right|
-$$
-
-3. **Velocidad de Salida**: Reducimos el `v_ref` (velocidad objetivo) proporcionalmente al *Curve Factor*. Si el carro va recto, asume el 100% de vel; si gira brusco, cae al 60%.
-4. **Aceleración Ramp-up**: Perfil de aceleración/frenado escalonado (`+0.02 m/s` acelerando, `-0.04 m/s` frenando) eliminando jalones mecánicos.
+4. **Frenado por Curvatura**: La velocidad se ajusta dinámicamente según el ángulo de giro ($\delta$), permitiendo frenar antes de curvas cerradas:
+   $V_{target} = V_{ref} / (1 + 1.25 \cdot |\delta|)$.
+5. **Perfil S-Curve**: El arribo a waypoints usa un perfil de desaceleración cuadrática ($v = \sqrt{dist}$), eliminando los frenazos bruscos de versiones anteriores.
+6. **Aceleración Ramp-up**: Perfil suavizado para un "Premium Feel" y protección de motores simulados.
 
 ---
 
-## ⚙️ 4. Nodos de Software (`roboracer_racing`)
+## 🛰️ 4. Evasión de Obstáculos y Campos de Potencia (APF)
+
+El QCar ya no solo sigue waypoints, sino que "siente" su entorno mediante **Campos de Potencial Artificiales (APF)**.
+
+### 4.1. Fuerzas Atractivas y Repulsivas
+* **$F_{att}$ (Atrapamiento)**: Una fuerza elástica que tira del carro hacia el siguiente waypoint.
+* **$F_{rep}$ (Repulsión)**: Una fuerza invisible emitida por paredes y obstáculos. Se calcula con un filtro frontal de LiDAR y decae con el cuadrado de la distancia.
+* **Sesgo Lateral**: El algoritmo detecta si hay más espacio a la izquierda o derecha de un obstáculo para elegir el lado de evasión más seguro.
+
+### 4.2. Evasión Dinámica (2D Nav Goal)
+Desde RViz, el operador puede colocar **objetos físicos reales** en Gazebo. El sistema intercepta el clic de navegación, envía un comando al simulador para `spawnear` un cubo rojo, y el carro lo detecta inmediatamente tanto por LiDAR como por Cámara.
+
+---
+
+## ⚙️ 5. Nodos de Software (`roboracer_racing`)
 
 El *core* de nuestra lógica customizada habita en el paquete `roboracer_racing` y se divide en módulos modulares y de responsabilidad única:
 
 | Nodo (Python) | Descripción Técnica y Funcionalidad Destacada |
 |:--------------|:----------------------------------------------|
 | `multi_goal_navigator.py` | **Manejador Maestro (Planner).** Lee `PointStamped` del "Publish Point" en RViz y construye una trayectoria. <br>✅ **CLI Asíncrono**: Permite controlar la carrera vía terminal (`[g] Go`, `[c] Clear`, `[s] Save`, `[q] Quit`).<br>✅ **Persistencia JSON**: Guarda la ruta perfecta en `/routes` y permite recargarla en el futuro con precisión quirúrgica.<br>✅ **Pure Pursuit Engine**: Corre el loop de control principal calculando las velocidades relativas a 50 Hz. |
-| `telemetry_dashboard.py` | **Telemetría Estilo MATLAB.** Gráficas *Data-Science* en tiempo real.<br>✅ **FuncAnimation**: Gráficas de deslizamiento (*scrolling windows*) de los últimos 10 segundos.<br>✅ **HUD Numérico**: Cuadros dinámicos *Over-the-top* con valores calculados de V_ref, Steering State y Error con formato Ingenieril.<br>✅ **Sombreado Analítico**: Renderiza bandas de colores (Verde/Admisible, Rojo/Peligro) y rellena el área bajo la curva del *tracking error*. |
+| `telemetry_dashboard.py` | **Estación de Ingeniería v11 (Minimalista).** <br>✅ **Blueprint Style**: Interfaz blanca de alta densidad para análisis de datos puro.<br>✅ **3-Cam Fusion**: Transmisión de 3 cámaras sincronizadas con detección de objetos y proyección de LiDAR superpuesta.<br>✅ **Métricas Derivadas**: Gráficas en tiempo real de Aceleración Gx, Margen de Seguridad (Clearance) e Intensidad de Fuerzas APF. |
 | `odom_tf_broadcaster.py` | **Puente Espacial.** Lee `/qcar_sim/odom` originado por Gazebo y expone el *Transform Tree* (`world` → `base_link`) para que RViz acople el modelo 3D del carro perfectamente con la física real. |
 | `track_visualizer.py` | **Pintor 3D de RViz.** Extrapola los vértices del `.obj` de la pista de Gazebo y transmite un `visualization_msgs/Marker` gigante a RViz, permitiendo ver la pista real como plantilla y referencia topológica. |
 | `keyboard_teleop.py` | **Conducción Mánual.** Script WASD de precisión para validación de hardware y trazado empírico inicial. |
 
 ---
 
-## 📂 5. Estructura del Proyecto
+## 📂 6. Estructura del Proyecto
 
 A continuación se muestra cómo está organizado el código dentro del repositorio. Notarás la estricta separación de responsabilidades: *Simulators, Algorithms, and Support*.
 
@@ -105,7 +112,7 @@ roboracer-autonomous-stack/
 
 ---
 
-## 🚀 6. Manual Rápido (Comandos de Uso)
+## 🚀 7. Manual Rápido (Comandos de Uso)
 
 ### Paso 1: Lanzar la Simulación (Terminal 1)
 ```bash
@@ -133,22 +140,23 @@ ros2 run roboracer_racing multi_goal
 ### Paso 3: Interactuar
 1. En RViz (que se abrió solo en el Paso 1), usa la herramienta **Publish Point** (arriba a la derecha).
 2. Da **todos los clicks que quieras** a lo largo de la pista. (Verás aparecer esferas numeradas).
-3. Ve a la Terminal 2 y escribe **`g`**, luego `Enter` para que el carro arranque la carrera, siguiendo la línea de path.
-4. Escribe **`s`** si quieres guardar la ruta perfecta, o **`c`** para limpiar y volver a intertarlo.
+3. Ve a la Terminal 2 y escribe **`g`**, luego `Enter` para que el carro arranque.
+4. **Obstáculos**: Selecciona **2D Nav Goal** en RViz y da click en la pista para que aparezca un cubo físico en Gazebo frente al carro.
+5. Escribe **`s`** para guardar la ruta, o **`c`** para limpiar (esto borrará también los cubos de Gazebo).
 
 ---
 
-## 📊 7. Plan de Trabajo Restante
+## 📊 8. Plan de Trabajo Restante
 
-**✅ Fase 1: Simulación y RViz Completa** (Gazebo y Visualización estables).
-**✅ Fase 2: Control Time-Trial Básico** (Pure pursuit + GUI/CLI).
+**✅ Fase 1: Simulación y RViz Completa.**
+**✅ Fase 2: Control Time-Trial Básico.**
+**✅ Fase 3: Evasión Inteligente (Autonomous Racing).**
+   * Campos de fuerza (APF) y frenado curvo adaptativo.
+   * Interacción física Gazebo <> RViz (Spawning dinámico).
+   * Telemetría de alta densidad (Gx, Clearance, AI Vision).
 
-**⏳ Fase 3: Evasión (Siguiente paso lógico)**
-* Activar el escaneo LiDAR (`/qcar_sim/scan`).
-* Integrar lógica que evite el estancamiento y haga desvíos laterales cuando detecte una obstrucción en el path de waypoints.
-
-**⏳ Fase 4: Head-to-Head**
-* Modificar `test_world.sdf` para *spawnear* dos QCars e implementar detección adversaria.
+**⏳ Fase 4: Head-to-Head (Siguiente paso lógico)**
+   * Modificar `test_world.sdf` para *spawnear* dos QCars e implementar detección adversaria.
 
 ---
 *"El que no arriesga, no gana la carrera."* 🏁

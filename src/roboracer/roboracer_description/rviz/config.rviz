@@ -265,7 +265,7 @@ Visualization Manager:
       Position Transformer: XYZ
       Selectable: true
       Size (Pixels): 5
-      Size (m): 0.029999999329447746
+      Size (m): 0.05
       Style: Flat Squares
       Topic:
         Depth: 5
@@ -289,6 +289,19 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /viz/goal_marker
+      Value: true
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: LidarBrainView
+      Namespaces:
+        lidar_brain: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /viz/lidar_fan
       Value: true
     - Class: rviz_default_plugins/Marker
       Enabled: true
@@ -352,6 +365,17 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /viz/waypoints
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: VirtualObstacles
+      Topic:
+        Depth: 10
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /viz/virtual_obstacles
       Value: true
     - Alpha: 1
       Class: rviz_default_plugins/Path
