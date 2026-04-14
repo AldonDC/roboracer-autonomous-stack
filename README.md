@@ -106,15 +106,15 @@ El algoritmo ejecuta un pipeline clásico de 5 etapas a 30 Hz.
 
 **Etapa 2 — Doble máscara HSV.** Se generan dos máscaras binarias en paralelo, una por color objetivo:
 
-$$M_{yellow}(p) = 1 \cdot \left[ H(p) \in [18, 38] \land S(p) \in [80, 255] \land V(p) \in [80, 255] \right]$$
+$$M_{yellow}(p) = 1 \cdot [ H(p) \in [18, 38] \land S(p) \in [80, 255] \land V(p) \in [80, 255] ]$$
 
-$$M_{white}(p) = 1 \cdot \left[ S(p) \leq 80 \land V(p) \geq 140 \right]$$
+$$M_{white}(p) = 1 \cdot [ S(p) \leq 80 \land V(p) \geq 140 ]$$
 
 **Etapa 3 — Apertura + Cierre morfológico.** Elimina ruido de sal/pimienta y conecta segmentos fragmentados con un kernel rectangular de $5 \times 5$.
 
 **Etapa 4 — Region of Interest (ROI) trapezoidal.** Se aplica una máscara poligonal que conserva solo la mitad inferior de la imagen, descartando cielo y horizonte:
 
-$$\text{ROI} = \left\{ (0.02w, h), (0.20w, 0.55h), (0.80w, 0.55h), (0.98w, h) \right\}$$
+$$\text{ROI} = \{ (0.02w, h), (0.20w, 0.55h), (0.80w, 0.55h), (0.98w, h) \}$$
 
 **Etapa 5 — Detección de líneas.** Canny + `HoughLinesP` extrae segmentos; luego se ajusta una recta $x = my + b$ por mínimos cuadrados en cada lado.
 
