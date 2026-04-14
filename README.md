@@ -45,9 +45,10 @@ $$
 $$
 
 Donde:
-* $L$ = Distancia entre ejes del carro (0.256m).
-* $\alpha$ = Ángulo entre el heading actual del carro y el waypoint.
-* $L_d$ = Lookahead distance (dinámico basado en la distancia al punto).
+* $\delta$: Ángulo de dirección calculado (steering angle).
+* $L$: Distancia entre ejes del carro (0.256m).
+* $\alpha$: Ángulo entre el heading actual del carro y el waypoint.
+* $L_d$: Distancia de mirada al frente (Lookahead distance).
 
 ### 3.2. Perfiles de Velocidad Inteligentes (v12)
 El controlador implementa un esquema de **Velocidad de Curvatura Crítica** para asegurar la estabilidad lateral en giros cerrados:
@@ -56,11 +57,20 @@ El controlador implementa un esquema de **Velocidad de Curvatura Crítica** para
 
 $$V(\delta) = \frac{V_{ref}}{1 + k|\delta|}$$
 
-Donde $k = 1.25$ es el coeficiente de agresividad de frenado.
+Donde:
+* $V(\delta)$: Velocidad final ajustada por curvatura.
+* $V_{ref}$: Velocidad de crucero base (parámetro configurable).
+* $k$: Ganancia de penalización (agresividad del frenado en curvas).
+* $|\delta|$: Magnitud del ángulo de dirección actual.
 
 2. **Perfil de Arribo (S-Curve)**: Desaceleración suave basada en la raíz cuadrada de la distancia al objetivo, evitando el comportamiento oscilatorio cerca del waypoint.
 
 $$V_{dist} = V_{ref} \cdot \sqrt{\max\left(0.2, \frac{d}{d_{range}}\right)}$$
+
+Donde:
+* $V_{dist}$: Límite de velocidad por proximidad al objetivo.
+* $d$: Distancia euclidiana actual al waypoint activo.
+* $d_{range}$: Radio de desaceleración (distancia donde inicia el frenado).
 
 3. **Filtro de Jerk**: El perfil de aceleración está limitado a $0.08\,m/s^2$ para proteger los actuadores mecánicos y evitar el deslizamiento de neumáticos.
 
@@ -75,11 +85,22 @@ El potencial total $U(\mathbf{q})$ es la suma de una superficie atractiva y una 
 
 $$\mathbf{F}_{net} = -\nabla U_{att}(\mathbf{q}) - \nabla U_{rep}(\mathbf{q})$$
 
+Donde:
+* $\mathbf{F}_{net}$: Vector de fuerza resultante (comando de dirección).
+* $\nabla U_{att}$: Gradiente de atracción (fuerza hacia la meta).
+* $\nabla U_{rep}$: Gradiente de repulsión (fuerza contra obstáculos).
+* $\mathbf{q}$: Pose actual del robot en el espacio de configuración.
+
 Calculamos la fuerza emitida por cada cluster de obstáculos detectados por el láser:
 
 $$\mathbf{F}_{rep} = \begin{cases} \eta \left( \frac{1}{\rho(\mathbf{q})} - \frac{1}{\rho_0} \right) \frac{1}{\rho^2(\mathbf{q})} \frac{\mathbf{q} - \mathbf{q}_{obs}}{\rho(\mathbf{q})} & \text{si } \rho(\mathbf{q}) \leq \rho_0 \\ 0 & \text{si } \rho(\mathbf{q}) > \rho_0 \end{cases}$$
 
-Donde $\rho_0 = 1.1m$ es el radio de influencia y $\eta$ es el factor de escala de evasión.
+Donde:
+* $\mathbf{F}_{rep}$: Contribución repulsiva de un obstáculo/cluster.
+* $\eta$: Coeficiente de ganancia de evasión (escala de la fuerza).
+* $\rho(\mathbf{q})$: Distancia actual al punto más cercano del obstáculo.
+* $\rho_0$: Radio de influencia (umbral de detección del APF).
+* $\mathbf{q} - \mathbf{q}_{obs}$: Vector relativo desde el obstáculo hacia el robot.
 
 ### 4.2. Evasión Dinámica (2D Nav Goal)
 Desde RViz, el operador puede colocar **objetos físicos reales** en Gazebo. El sistema intercepta el clic de navegación, envía un comando al simulador para `spawnear` un cubo rojo, y el carro lo detecta inmediatamente tanto por LiDAR como por Cámara.
@@ -110,11 +131,19 @@ $$M_{yellow}(p) = 1 \cdot [ H(p) \in [18, 38] \land S(p) \in [80, 255] \land V(p
 
 $$M_{white}(p) = 1 \cdot [ S(p) \leq 80 \land V(p) \geq 140 ]$$
 
+Donde para un pixel $p$:
+* $M_{color}$: Máscara booleana resultante (1 si cumple, 0 si no).
+* $H(p), S(p), V(p)$: Componentes de Tono (Hue), Saturación y Valor en espacio HSV.
+
 **Etapa 3 — Apertura + Cierre morfológico.** Elimina ruido de sal/pimienta y conecta segmentos fragmentados con un kernel rectangular de $5 \times 5$.
 
 **Etapa 4 — Region of Interest (ROI) trapezoidal.** Se aplica una máscara poligonal que conserva solo la mitad inferior de la imagen, descartando cielo y horizonte:
 
 $$\text{ROI} = \{ (0.02w, h), (0.20w, 0.55h), (0.80w, 0.55h), (0.98w, h) \}$$
+
+Donde:
+* $w, h$: Ancho y alto de la imagen de entrada en píxeles.
+* Los puntos definen el polígono de búsqueda exclusivo para líneas de suelo.
 
 **Etapa 5 — Detección de líneas.** Canny + `HoughLinesP` extrae segmentos; luego se ajusta una recta $x = my + b$ por mínimos cuadrados en cada lado.
 
@@ -131,6 +160,12 @@ x_W - w_{lane} & \text{solo blanco} \\
 \end{cases}
 $$
 
+Donde:
+* $c_{lane}$: Centro estimado del carril (coordenada horizontal de píxel).
+* $x_Y$: Posición X de la línea amarilla (divisoria central).
+* $x_W$: Posición X de la línea blanca (borde exterior).
+* $w_{lane}$: Ancho medio del carril en píxeles (utilizado como fallback).
+
 con niveles de confianza asociados:
 
 | Caso | Detecciones | $\text{conf}$ |
@@ -144,7 +179,7 @@ El **offset normalizado** publicado en `/lane/center_offset` es:
 
 $$o = \text{clip}\left( \frac{c_{lane} - w/2}{w/2},\; -1,\; +1 \right)$$
 
-Con suavizado exponencial $o_t = 0.7\, o_{t-1} + 0.3\, \tilde{o}_t$ para eliminar jitter.
+Con suavizado exponencial $o_t = 0.7\, o_{t-1} + 0.3\, \tilde{o}_t$ donde $o_t$ es el offset filtrado y $\tilde{o}_t$ es la medición cruda actual.
 
 ### 5.4. Fusión en el Controlador (Lane-Assist)
 
@@ -156,7 +191,14 @@ donde el término de visión se activa condicionalmente:
 
 $$\delta_{lane} = \begin{cases} k_{lane} \cdot o \cdot \text{conf} & \text{si } \text{conf} > 0.25 \\ 0 & \text{otros casos} \end{cases}$$
 
-Con $k_{lane} = 0.18$ como ganancia de lane-assist (intencionalmente baja para afinar, no comandar).
+Con:
+* $\delta_{final}$: Comando de dirección final hacia el vehículo.
+* $\delta_{PP}$: Componente de seguimiento de ruta (Pure Pursuit).
+* $\delta_{APF}$: Componente reactiva de evasión (Artificial Potential Fields).
+* $\delta_{lane}$: Corrección visual por mantenimiento de carril.
+* $k_{lane}$: Ganancia del asistente de carril (Lane-Assist Gain).
+* $o$: Offset lateral normalizado $[-1, 1]$.
+* $\text{conf}$: Nivel de confianza de la detección visual.
 
 ### 5.5. Calibración de Cámaras (v13)
 
