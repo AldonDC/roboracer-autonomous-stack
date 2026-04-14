@@ -100,49 +100,56 @@ El objetivo del detector es estimar el **centro del carril** $c_{lane}$ a partir
 
 ### 5.2. Pipeline de Visión (OpenCV)
 
-El algoritmo ejecuta un pipeline clásico de 5 etapas a 30 Hz:
+El algoritmo ejecuta un pipeline clásico de 5 etapas a 30 Hz.
 
-1. **Conversión de espacio de color** — $\text{BGR} \rightarrow \text{HSV}$ para aislar color independientemente de iluminación.
-2. **Doble máscara HSV** — Se generan dos máscaras binarias en paralelo:
+**Etapa 1 — Conversión de espacio de color.** Se convierte la imagen de $\text{BGR} \rightarrow \text{HSV}$ para aislar color independientemente de iluminación.
 
-$$M_{yellow}(p) = \mathbb{1}\left[H(p) \in [18, 38] \land S(p) \in [80, 255] \land V(p) \in [80, 255]\right]$$
+**Etapa 2 — Doble máscara HSV.** Se generan dos máscaras binarias en paralelo, una por color objetivo:
 
-$$M_{white}(p) = \mathbb{1}\left[S(p) \leq 80 \land V(p) \geq 140\right]$$
+$$M_{yellow}(p) = \mathbf{1}\bigl[ H(p) \in [18, 38] \,\land\, S(p) \in [80, 255] \,\land\, V(p) \in [80, 255] \bigr]$$
 
-3. **Apertura + Cierre morfológico** — Elimina ruido de sal/pimienta y conecta segmentos fragmentados con un kernel rectangular de $5 \times 5$.
-4. **Region of Interest (ROI) trapezoidal** — Se aplica una máscara poligonal que conserva solo la mitad inferior de la imagen, descartando cielo y horizonte:
+$$M_{white}(p) = \mathbf{1}\bigl[ S(p) \leq 80 \,\land\, V(p) \geq 140 \bigr]$$
 
-$$\text{ROI} = \text{Trapezoid}\left\{(0.02w, h),\; (0.20w, 0.55h),\; (0.80w, 0.55h),\; (0.98w, h)\right\}$$
+**Etapa 3 — Apertura + Cierre morfológico.** Elimina ruido de sal/pimienta y conecta segmentos fragmentados con un kernel rectangular de $5 \times 5$.
 
-5. **Detección de líneas** — Canny + `HoughLinesP` extrae segmentos; luego se ajusta una recta $x = my + b$ por mínimos cuadrados en cada lado.
+**Etapa 4 — Region of Interest (ROI) trapezoidal.** Se aplica una máscara poligonal que conserva solo la mitad inferior de la imagen, descartando cielo y horizonte:
+
+$$\text{ROI} = \bigl\{ (0.02w,\, h),\; (0.20w,\, 0.55h),\; (0.80w,\, 0.55h),\; (0.98w,\, h) \bigr\}$$
+
+**Etapa 5 — Detección de líneas.** Canny + `HoughLinesP` extrae segmentos; luego se ajusta una recta $x = my + b$ por mínimos cuadrados en cada lado.
 
 ### 5.3. Modelo de Centro de Carril (Fusión)
 
 Sea $x_Y$ el $x$ del ajuste de la línea amarilla en la base de la imagen, $x_W$ el de la blanca, y $w_{lane}$ el ancho medio de carril asumido (28% del ancho de imagen). El centro de carril se calcula según las detecciones disponibles:
 
-$$
-c_{lane} =
-\begin{cases}
-\dfrac{x_Y + x_W}{2}, & \text{si ambas líneas detectadas} \quad (\text{conf} = 1.0) \\[6pt]
-x_Y + w_{lane}, & \text{solo amarillo} \quad (\text{conf} = 0.70) \\[6pt]
-x_W - w_{lane}, & \text{solo blanco} \quad (\text{conf} = 0.55) \\[6pt]
-\text{sin estimación}, & \text{ninguna} \quad (\text{conf} = 0)
-\end{cases}
-$$
+$$c_{lane} = \begin{cases} \dfrac{x_Y + x_W}{2} & \text{ambas líneas} \\ x_Y + w_{lane} & \text{solo amarillo} \\ x_W - w_{lane} & \text{solo blanco} \\ \text{indefinido} & \text{ninguna} \end{cases}$$
+
+con niveles de confianza asociados:
+
+| Caso | Detecciones | $\text{conf}$ |
+|:-----|:------------|:--------------|
+| Completo | Amarillo + Blanco | $1.00$ |
+| Parcial A | Solo amarillo | $0.70$ |
+| Parcial B | Solo blanco | $0.55$ |
+| Blind | Ninguna | $0.00$ |
 
 El **offset normalizado** publicado en `/lane/center_offset` es:
 
-$$o = \text{clip}\left(\frac{c_{lane} - w/2}{w/2},\; -1,\; +1\right)$$
+$$o = \text{clip}\left( \frac{c_{lane} - w/2}{w/2},\; -1,\; +1 \right)$$
 
-Con suavizado exponencial $o_t = 0.7\,o_{t-1} + 0.3\,\tilde{o}_t$ para eliminar jitter.
+Con suavizado exponencial $o_t = 0.7\, o_{t-1} + 0.3\, \tilde{o}_t$ para eliminar jitter.
 
 ### 5.4. Fusión en el Controlador (Lane-Assist)
 
 El `multi_goal_navigator` suscribe `/lane/center_offset` y `/lane/confidence` e inyecta un **término de corrección lateral** en el steering, pero **solo cuando el APF no está en modo emergencia** (para que LiDAR siempre mande):
 
-$$\delta_{final} = \delta_{PP} + \delta_{APF} + \underbrace{k_{lane} \cdot o \cdot \text{conf}}_{\text{solo si conf}>0.25}$$
+$$\delta_{final} = \delta_{PP} + \delta_{APF} + \delta_{lane}$$
 
-Donde $k_{lane} = 0.18$ es la ganancia de lane-assist (intencionalmente baja para afinar, no comandar).
+donde el término de visión se activa condicionalmente:
+
+$$\delta_{lane} = \begin{cases} k_{lane} \cdot o \cdot \text{conf} & \text{si } \text{conf} > 0.25 \\ 0 & \text{en otro caso} \end{cases}$$
+
+Con $k_{lane} = 0.18$ como ganancia de lane-assist (intencionalmente baja para afinar, no comandar).
 
 ### 5.5. Calibración de Cámaras (v13)
 
