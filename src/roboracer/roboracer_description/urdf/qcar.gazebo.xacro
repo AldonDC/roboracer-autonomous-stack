@@ -72,7 +72,7 @@
         <visualize>true</visualize>
         <topic>qcar/csi_front/image_raw</topic>
         <camera name="front">
-          <horizontal_fov>2.79253</horizontal_fov>
+          <horizontal_fov>1.22</horizontal_fov>
           <image>
               <width>${csi_width}</width>
               <height>${csi_height}</height>
@@ -118,7 +118,7 @@
         <visualize>true</visualize>
         <topic>qcar/csi_right/image_raw</topic>
         <camera name="right">
-          <horizontal_fov>2.79253</horizontal_fov>
+          <horizontal_fov>1.40</horizontal_fov>
           <image>
               <width>${csi_width}</width>
               <height>${csi_height}</height>
@@ -163,8 +163,8 @@
         <update_rate>${csi_update_rate}</update_rate>
         <visualize>true</visualize>
         <topic>qcar/csi_left/image_raw</topic>
-        <camera name="front">
-          <horizontal_fov>2.79253</horizontal_fov>
+        <camera name="left">
+          <horizontal_fov>1.40</horizontal_fov>
           <image>
               <width>${csi_width}</width>
               <height>${csi_height}</height>
@@ -209,8 +209,8 @@
         <update_rate>${csi_update_rate}</update_rate>
         <visualize>true</visualize>
         <topic>qcar/csi_back/image_raw</topic>
-        <camera name="front">
-          <horizontal_fov>2.79253</horizontal_fov>
+        <camera name="back">
+          <horizontal_fov>1.50</horizontal_fov>
           <image>
               <width>${csi_width}</width>
               <height>${csi_height}</height>

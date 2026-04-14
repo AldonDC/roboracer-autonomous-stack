@@ -229,54 +229,41 @@ limitations under the License.
     </link>
 
     <joint name="camera_rgb_joint" type="fixed">
-      <!-- <axis xyz="0 1 0" /> -->
-      <!-- <origin xyz=".2 0 0" rpy="0 0 0"/> -->
-        <origin rpy="0 0 0" xyz="0.081686 0.031547 0.15445"/>
-        <!-- <origin rpy="0 0 0" xyz="0 0 0"/> -->
-      <parent link="base"/>
-      <child link="camera_rgb"/>
+        <!-- RealSense RGB: centrada en Y, sobre el techo (z=0.154). -->
+        <origin rpy="0 0 0" xyz="0.081686 0.0 0.15445"/>
+        <parent link="base"/>
+        <child link="camera_rgb"/>
     </joint>
     <link name="camera_rgb"/>
 
     <joint name="camera_csi_front_joint" type="fixed">
-        <!-- <axis xyz="0 1 0" /> -->
-        <!-- <origin xyz=".2 0 0" rpy="0 0 0"/> -->
-        <origin rpy="0 0 0" xyz="0.19236 -0.000475 0.093029"/>
-        <!-- <origin rpy="0 0 0" xyz="0 0 0"/> -->
+        <!-- Cámara frontal: centrada lateralmente (y=0), ligeramente inclinada
+             hacia abajo (pitch 0.15 rad ≈ 8.6°) para ver mejor el asfalto. -->
+        <origin rpy="0 0.15 0" xyz="0.19236 0.0 0.093029"/>
         <parent link="base"/>
         <child link="camera_csi_front"/>
     </joint>
     <link name="camera_csi_front"/>
 
     <joint name="camera_csi_right_joint" type="fixed">
-        <!-- <axis xyz="0 1 0" /> -->
-        <!-- <origin xyz=".2 0 0" rpy="0 0 0"/> -->
-        <!-- ___________________xyz is wrong, need to update_______________________________ -->
-        <!-- <origin rpy="0 0 -1.5708" xyz="0.12887 -0.06755 0.093029"/> -->
-        <origin rpy="0 0 -1.5708" xyz="0.012887 -0.06755 0.093029"/>
-        <!-- <origin rpy="0 0 0" xyz="0 0 0"/> -->
+        <!-- Cámara lateral DERECHA: rotada -90° en Z, en el costado derecho (y=-0.06). -->
+        <origin rpy="0 0 -1.5708" xyz="0.01289 -0.06000 0.093029"/>
         <parent link="base"/>
         <child link="camera_csi_right"/>
     </joint>
     <link name="camera_csi_right"/>
 
     <joint name="camera_csi_back_joint" type="fixed">
-        <!-- <axis xyz="0 1 0" /> -->
-        <!-- <origin xyz=".2 0 0" rpy="0 0 0"/> -->
-        <origin rpy="0 0 -3.1416" xyz="-0.16669 -0.000578 0.093029"/>
-        <!-- <origin rpy="0 0 0" xyz="0 0 0"/> -->
+        <!-- Cámara trasera: rotada 180° en Z (mira hacia atrás), centrada en Y. -->
+        <origin rpy="0 0 -3.1416" xyz="-0.16669 0.0 0.093029"/>
         <parent link="base"/>
         <child link="camera_csi_back"/>
     </joint>
     <link name="camera_csi_back"/>
 
     <joint name="camera_csi_left_joint" type="fixed">
-        <!-- <axis xyz="0 1 0" /> -->
-        <!-- <origin xyz=".2 0 0" rpy="0 0 0"/> -->
-        <!-- ___________________xyz is wrong, need to update_______________________________ -->
-        <!-- <origin rpy="0 0 1.5708" xyz="0.12784 0.052497 0.093029"/> -->
-         <origin rpy="0 0 1.5708" xyz="0.012784 0.052497 0.093029"/>
-        <!-- <origin rpy="0 0 0" xyz="0 0 0"/> -->
+        <!-- Cámara lateral IZQUIERDA: rotada +90° en Z, espejo de la derecha (y=+0.06). -->
+        <origin rpy="0 0 1.5708" xyz="0.01289 0.06000 0.093029"/>
         <parent link="base"/>
         <child link="camera_csi_left"/>
     </joint>

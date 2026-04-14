@@ -14,7 +14,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import Vector3Stamped, PointStamped, PoseStamped
 from nav_msgs.msg import Odometry, Path
 from visualization_msgs.msg import Marker, MarkerArray
-from std_msgs.msg import Empty, Float32MultiArray
+from std_msgs.msg import Empty, Float32, Float32MultiArray
 from sensor_msgs.msg import LaserScan
 import math
 import numpy as np
@@ -77,6 +77,12 @@ class MultiGoalNavigator(Node):
         self.sector_clearance = [LIDAR_RANGE] * 12
         self.last_delta = 0.0
 
+        # Fase Visión: Lane-Assist (amarillo) state
+        self.lane_offset = 0.0       # normalizado [-1, 1], neg = carril a la izq
+        self.lane_conf = 0.0         # 0..1
+        self.declare_parameter('k_lane', 0.18)   # ganancia lane-assist sobre delta
+        self.declare_parameter('lane_conf_min', 0.25)
+
         
         # Fase 6: Hybrid Controller State
         self.repel_vec_x = 0.0
@@ -118,6 +124,14 @@ class MultiGoalNavigator(Node):
         # LiDAR Scan (Fase 3)
         self.scan_sub = self.create_subscription(
             LaserScan, '/qcar_sim/scan', self.scan_cb, 10
+        )
+
+        # Lane-Assist (Fase Visión)
+        self.lane_off_sub = self.create_subscription(
+            Float32, '/lane/center_offset', self._lane_off_cb, 10
+        )
+        self.lane_conf_sub = self.create_subscription(
+            Float32, '/lane/confidence', self._lane_conf_cb, 10
         )
 
         # Control loop 50Hz
@@ -318,6 +332,12 @@ class MultiGoalNavigator(Node):
         
         m.points = points
         self.lidar_fan_pub.publish(m)
+
+    def _lane_off_cb(self, msg):
+        self.lane_offset = float(msg.data)
+
+    def _lane_conf_cb(self, msg):
+        self.lane_conf = float(msg.data)
 
     def odom_cb(self, msg):
         self.current_x = msg.pose.pose.position.x
@@ -702,6 +722,18 @@ class MultiGoalNavigator(Node):
             delta = float(np.clip(
                 delta * (1.0 - blend) + gap_steer * blend,
                 -self.max_steer, self.max_steer))
+
+        # ── Fase Visión: Lane-Assist (amarillo) ───────────────────────────
+        # Solo cuando la cámara confía y NO estamos esquivando un obstáculo
+        # (para que LiDAR/APF siempre manden en emergencias).
+        k_lane = float(self.get_parameter('k_lane').value)
+        conf_min = float(self.get_parameter('lane_conf_min').value)
+        if (self.lane_conf > conf_min
+                and not aeb_active
+                and abs(_pre_offset) < 0.15):
+            # offset > 0 → carril a la derecha → gira derecha (delta negativo en este convenio).
+            lane_delta = -k_lane * self.lane_offset * self.lane_conf
+            delta = float(np.clip(delta + lane_delta, -self.max_steer, self.max_steer))
 
         # ── Histeresis: suavizado de steering ───────────────────────────────
         delta = 0.7 * delta + 0.3 * self.last_delta

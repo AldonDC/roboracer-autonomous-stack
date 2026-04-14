@@ -14,7 +14,7 @@ import math
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
-from std_msgs.msg import Float32MultiArray
+from std_msgs.msg import Float32, Float32MultiArray
 from sensor_msgs.msg import LaserScan, Image
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -206,6 +206,18 @@ class TelemetryDashboard(Node):
         self.cam_r_sub = self.create_subscription(
             Image, CAM_RIGHT, lambda m: self._cam_cb(m, 'r'), _cam_qos)
 
+        # Lane-Detector debug feed
+        self.lane_off_sub = self.create_subscription(
+            Float32, '/lane/center_offset', self._lane_off_cb, 10)
+        self.lane_conf_sub = self.create_subscription(
+            Float32, '/lane/confidence', self._lane_conf_cb, 10)
+        self.lane_img_sub = self.create_subscription(
+            Image, '/lane/image_debug', self._lane_img_cb, _cam_qos)
+        self.lane_offset = 0.0
+        self.lane_conf = 0.0
+        self.lane_last_t = 0.0
+        self.lane_dbg_frame = None
+
         self.max_pts    = 200
         self.times      = deque(maxlen=self.max_pts)
         self.v_target   = deque(maxlen=self.max_pts)
@@ -276,6 +288,20 @@ class TelemetryDashboard(Node):
         self.scan_d = rv.astype(np.float32)
         if len(rv):
             self.lidar_stats = dict(n=int(len(rv)), dmin=float(rv.min()))
+
+    def _lane_off_cb(self, msg):
+        self.lane_offset = float(msg.data)
+        self.lane_last_t = self.get_clock().now().nanoseconds / 1e9
+
+    def _lane_conf_cb(self, msg):
+        self.lane_conf = float(msg.data)
+
+    def _lane_img_cb(self, msg):
+        arr = _img_to_numpy(msg)
+        if arr is None:
+            return
+        with self._cam_lock:
+            self.lane_dbg_frame = arr
 
     def _cam_cb(self, msg, key):
         arr = _img_to_numpy(msg)
@@ -466,6 +492,31 @@ def main(args=None):
                           bbox=dict(fc='#00000088',ec='none',
                                     boxstyle='round,pad=0.3'), zorder=9)
 
+    # ── LANE-DETECTOR debug HUD (amarillo) ────────────────────────────────────
+    # Texto con offset/conf + estado DETECTED/BLIND
+    cf_lane_txt = ax_cf.text(
+        0.5, 0.94, 'LANE  —  waiting...', transform=ax_cf.transAxes,
+        fontsize=8, color='#FFEB3B', va='top', ha='center',
+        fontfamily='monospace', fontweight='bold',
+        bbox=dict(fc='#00000099', ec='#FFEB3B', lw=1.2,
+                  boxstyle='round,pad=0.35'), zorder=10)
+    # Barra horizontal de offset (center track): de -1 (izq) a +1 (der)
+    # Ejes transAxes: x en [0.30, 0.70], y fijo a 0.89
+    _bar_y = 0.885
+    _bar_left, _bar_right = 0.30, 0.70
+    # Fondo de la barra
+    ax_cf.plot([_bar_left, _bar_right], [_bar_y, _bar_y],
+               transform=ax_cf.transAxes, color='#555555', lw=5,
+               solid_capstyle='round', zorder=10, alpha=0.6)
+    # Tick central (referencia carril ideal)
+    ax_cf.plot([0.5, 0.5], [_bar_y - 0.012, _bar_y + 0.012],
+               transform=ax_cf.transAxes, color='#FFFFFF', lw=1.5, zorder=11)
+    # Marcador móvil (punto sobre la barra)
+    lane_marker, = ax_cf.plot([0.5], [_bar_y], 'o', transform=ax_cf.transAxes,
+                              color='#FFEB3B', markersize=10,
+                              markeredgecolor='#000000', markeredgewidth=1.2,
+                              zorder=12)
+
     # No-signal overlays for all 3 cameras
     _ns_kw = dict(fontsize=10, color='#1A3A50', fontweight='bold',
                   va='center', ha='center', fontfamily='DejaVu Sans', alpha=0.55)
@@ -595,6 +646,38 @@ def main(args=None):
         else:            cf_aeb.set_text('●  NOMINAL');       cf_aeb.set_color(GRN)
         cf_det.set_text(f'{n_clusters} obj  |  v={v_now:+.2f}m/s')
 
+        # ── LANE-DETECTOR HUD ─────────────────────────────────────────────────
+        off = float(node.lane_offset)
+        conf = float(node.lane_conf)
+        now_t = node.get_clock().now().nanoseconds / 1e9
+        age = now_t - node.lane_last_t if node.lane_last_t > 0 else 99.0
+        stale = age > 1.0
+
+        if stale:
+            cf_lane_txt.set_text('LANE  ✗  NO SIGNAL')
+            cf_lane_txt.set_color('#FF5252')
+            cf_lane_txt.get_bbox_patch().set_edgecolor('#FF5252')
+            lane_marker.set_color('#666666')
+        elif conf >= 0.25:
+            status = '✓ DETECTED' if conf > 0.7 else '◐ PARTIAL'
+            cf_lane_txt.set_text(
+                f'LANE  {status}   off={off:+.2f}  conf={conf:.2f}')
+            cf_lane_txt.set_color('#FFEB3B' if conf > 0.7 else '#FFB300')
+            cf_lane_txt.get_bbox_patch().set_edgecolor(
+                '#FFEB3B' if conf > 0.7 else '#FFB300')
+            lane_marker.set_color('#FFEB3B' if conf > 0.7 else '#FFB300')
+        else:
+            cf_lane_txt.set_text(
+                f'LANE  ✗  BLIND   off={off:+.2f}  conf={conf:.2f}')
+            cf_lane_txt.set_color('#FF8A65')
+            cf_lane_txt.get_bbox_patch().set_edgecolor('#FF8A65')
+            lane_marker.set_color('#FF8A65')
+
+        # Posición del marcador en la barra (offset ∈ [-1, 1] → [_bar_left, _bar_right])
+        off_clip = max(-1.0, min(1.0, off))
+        x_marker = _bar_left + (off_clip + 1.0) * 0.5 * (_bar_right - _bar_left)
+        lane_marker.set_data([x_marker], [_bar_y])
+
         # Back camera
         if frames['b'] is not None:
             im_cb.set_data(frames['b']);  ns_cb.set_visible(False)
@@ -611,6 +694,7 @@ def main(args=None):
                 line_acc, line_lid, line_frc,
                 im_cf, im_cb, im_cr, proj_sc,
                 cf_info, cf_fps, cf_aeb, cf_det,
+                cf_lane_txt, lane_marker,
                 *cam_boxes, *cam_box_lbl)
 
     ani = animation.FuncAnimation(fig, update, interval=80, blit=False)

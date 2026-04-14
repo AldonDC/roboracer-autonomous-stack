@@ -3,7 +3,7 @@
 > **Alfonso D. — Tecnológico de Monterrey**
 > Materia: Assesment
 > Asesores: Dr. Daniel Sosa-Ceron · Dr. Jorge A. Reyes-Avendaño
-> Versión Actual: **v12.0 — Intelligent Racing Edition**
+> Versión Actual: **v13.0 — Vision-Fused Intelligent Racing**
 > Última actualización: Abril 2026
 
 [**Ver Video Demostrativo del QCar (Navegación Pure Pursuit)**](https://github.com/AldonDC/roboracer-autonomous-stack/raw/main/docs/assets/demo_rviz.webm)
@@ -86,21 +86,96 @@ Desde RViz, el operador puede colocar **objetos físicos reales** en Gazebo. El 
 
 ---
 
-## ⚙️ 5. Nodos de Software (`roboracer_racing`)
+## 👁️ 5. Visión Artificial Activa — Lane Detection (v13)
+
+A partir de v13 el carro no solo "ve" las cámaras — las **interpreta**. El nodo `lane_detector.py` procesa la cámara `csi_front` con OpenCV para detectar las líneas de carril y fusiona el resultado con el APF y Pure Pursuit para formar un **control de tres capas**.
+
+### 5.1. Semántica de la Pista
+
+La pista RoboRacer sigue la convención vial estándar:
+* **Línea amarilla** = divisoria central de la carretera (borde izquierdo del carril propio).
+* **Borde blanco/gris** = borde derecho del carril (curb exterior).
+
+El objetivo del detector es estimar el **centro del carril** $c_{lane}$ a partir de ambos bordes.
+
+### 5.2. Pipeline de Visión (OpenCV)
+
+El algoritmo ejecuta un pipeline clásico de 5 etapas a 30 Hz:
+
+1. **Conversión de espacio de color** — $\text{BGR} \rightarrow \text{HSV}$ para aislar color independientemente de iluminación.
+2. **Doble máscara HSV** — Se generan dos máscaras binarias en paralelo:
+
+$$M_{yellow}(p) = \mathbb{1}\left[H(p) \in [18, 38] \land S(p) \in [80, 255] \land V(p) \in [80, 255]\right]$$
+
+$$M_{white}(p) = \mathbb{1}\left[S(p) \leq 80 \land V(p) \geq 140\right]$$
+
+3. **Apertura + Cierre morfológico** — Elimina ruido de sal/pimienta y conecta segmentos fragmentados con un kernel rectangular de $5 \times 5$.
+4. **Region of Interest (ROI) trapezoidal** — Se aplica una máscara poligonal que conserva solo la mitad inferior de la imagen, descartando cielo y horizonte:
+
+$$\text{ROI} = \text{Trapezoid}\left\{(0.02w, h),\; (0.20w, 0.55h),\; (0.80w, 0.55h),\; (0.98w, h)\right\}$$
+
+5. **Detección de líneas** — Canny + `HoughLinesP` extrae segmentos; luego se ajusta una recta $x = my + b$ por mínimos cuadrados en cada lado.
+
+### 5.3. Modelo de Centro de Carril (Fusión)
+
+Sea $x_Y$ el $x$ del ajuste de la línea amarilla en la base de la imagen, $x_W$ el de la blanca, y $w_{lane}$ el ancho medio de carril asumido (28% del ancho de imagen). El centro de carril se calcula según las detecciones disponibles:
+
+$$
+c_{lane} =
+\begin{cases}
+\dfrac{x_Y + x_W}{2}, & \text{si ambas líneas detectadas} \quad (\text{conf} = 1.0) \\[6pt]
+x_Y + w_{lane}, & \text{solo amarillo} \quad (\text{conf} = 0.70) \\[6pt]
+x_W - w_{lane}, & \text{solo blanco} \quad (\text{conf} = 0.55) \\[6pt]
+\text{sin estimación}, & \text{ninguna} \quad (\text{conf} = 0)
+\end{cases}
+$$
+
+El **offset normalizado** publicado en `/lane/center_offset` es:
+
+$$o = \text{clip}\left(\frac{c_{lane} - w/2}{w/2},\; -1,\; +1\right)$$
+
+Con suavizado exponencial $o_t = 0.7\,o_{t-1} + 0.3\,\tilde{o}_t$ para eliminar jitter.
+
+### 5.4. Fusión en el Controlador (Lane-Assist)
+
+El `multi_goal_navigator` suscribe `/lane/center_offset` y `/lane/confidence` e inyecta un **término de corrección lateral** en el steering, pero **solo cuando el APF no está en modo emergencia** (para que LiDAR siempre mande):
+
+$$\delta_{final} = \delta_{PP} + \delta_{APF} + \underbrace{k_{lane} \cdot o \cdot \text{conf}}_{\text{solo si conf}>0.25}$$
+
+Donde $k_{lane} = 0.18$ es la ganancia de lane-assist (intencionalmente baja para afinar, no comandar).
+
+### 5.5. Calibración de Cámaras (v13)
+
+Durante la integración se detectaron y corrigieron varios problemas en el URDF de sensores:
+
+| Cámara | Problema original | Corrección v13 |
+|--------|-------------------|---------------|
+| `csi_front` | FOV 160° (fisheye extremo) | **FOV 70° (1.22 rad)** + pitch 8.6° hacia abajo |
+| `csi_right` | FOV 160°, `y=-0.068` asimétrico | **FOV 80°**, `y=-0.060` |
+| `csi_left`  | FOV 160°, `y=+0.052`, nombre "front" | **FOV 80°**, `y=+0.060`, nombre "left" |
+| `csi_back`  | FOV 160°, nombre "front" | **FOV 86°**, nombre "back" |
+| `RGB` (RealSense) | `y=0.0315` off-center | `y=0.0` centrada |
+
+Resultado: **líneas rectas en la imagen se ven rectas** (sin distorsión de barril), amarillo y blanco conservan sus gradientes reales en HSV, y las side-cams tienen una posición simétrica como espejo.
+
+---
+
+## ⚙️ 6. Nodos de Software (`roboracer_racing`)
 
 El *core* de nuestra lógica customizada habita en el paquete `roboracer_racing` y se divide en módulos modulares y de responsabilidad única:
 
 | Nodo (Python) | Descripción Técnica y Funcionalidad Destacada |
 |:--------------|:----------------------------------------------|
-| `multi_goal_navigator.py` | **Planner & Controller (v12).** <br>✅ **Gazebo Spawner**: Interfaz directa para inyectar modelos 3D físicos en el simulador vía RViz.<br>✅ **Goal-Biased Gap Following**: Selección inteligente de huecos de escape alineada con la meta.<br>✅ **Unified APF Control**: Fusión de Pure Pursuit con gradientes de repulsión a 50Hz. |
-| `telemetry_dashboard.py` | **Engineering Station (v11).** <br>✅ **Blueprint Aesthetic**: Interfaz de alta densidad con paleta de colores profesional blanca/azul.<br>✅ **Perception Fusion**: Overlay de LiDAR sobre las cámaras y detección de objetos clusterizada.<br>✅ **Engineering Metrics**: Gráficas de aceleración Gx, fuerza APF e histéresis de dirección. |
+| `multi_goal_navigator.py` | **Planner & Controller (v13).** <br>✅ **Gazebo Spawner**: Interfaz directa para inyectar modelos 3D físicos en el simulador vía RViz.<br>✅ **Goal-Biased Gap Following**: Selección inteligente de huecos de escape alineada con la meta.<br>✅ **Unified APF Control**: Fusión de Pure Pursuit con gradientes de repulsión a 50Hz.<br>✅ **Lane-Assist Fusion (v13)**: Suma un término de corrección lateral desde `lane_detector`, ponderado por confianza, sin comprometer la prioridad de LiDAR/APF en emergencia. |
+| `lane_detector.py` | **Visión Artificial Activa (v13, NUEVO).** <br>✅ **Dual HSV Masking**: Segmentación paralela amarillo (divisoria central) + blanco (curb derecho).<br>✅ **Hough Line Fit**: Ajuste lineal robusto $x = my + b$ por mínimos cuadrados en cada lado.<br>✅ **Fallback por ancho fijo**: Estima centro de carril aun con una sola línea detectada.<br>✅ **Publicación dual**: `/lane/center_offset` (Float32) + `/lane/confidence` (Float32) + `/lane/image_debug` (Image anotada con overlay). |
+| `telemetry_dashboard.py` | **Engineering Station (v12).** <br>✅ **Blueprint Aesthetic**: Interfaz de alta densidad con paleta de colores profesional blanca/azul.<br>✅ **Perception Fusion**: Overlay de LiDAR sobre las cámaras y detección de objetos clusterizada.<br>✅ **Engineering Metrics**: Gráficas de aceleración Gx, fuerza APF e histéresis de dirección.<br>✅ **Lane HUD (v13)**: Badge centrado sobre la cámara frontal con estado `FULL / YELLOW-ONLY / WHITE-ONLY / BLIND` + barra horizontal de offset en vivo. |
 | `odom_tf_broadcaster.py` | **Puente Espacial.** Lee `/qcar_sim/odom` originado por Gazebo y expone el *Transform Tree* (`world` → `base_link`) para que RViz acople el modelo 3D del carro perfectamente con la física real. |
 | `track_visualizer.py` | **Pintor 3D de RViz.** Extrapola los vértices del `.obj` de la pista de Gazebo y transmite un `visualization_msgs/Marker` gigante a RViz, permitiendo ver la pista real como plantilla y referencia topológica. |
-| `keyboard_teleop.py` | **Conducción Mánual.** Script WASD de precisión para validación de hardware y trazado empírico inicial. |
+| `keyboard_teleop.py` | **Conducción Manual.** Script WASD de precisión para validación de hardware y trazado empírico inicial. |
 
 ---
 
-## 📂 6. Estructura del Proyecto
+## 📂 7. Estructura del Proyecto
 
 A continuación se muestra cómo está organizado el código dentro del repositorio. Notarás la estricta separación de responsabilidades: *Simulators, Algorithms, and Support*.
 
@@ -114,7 +189,8 @@ roboracer-autonomous-stack/
 │   ├── racing_logic/                 # 🧠 AQUÍ VIVE LA INTELIGENCIA ARTIFICIAL (ALGORITMOS)
 │   │   └── roboracer_racing/         # Nuestro paquete principal de Python
 │   │       ├── routes/               # Archivos JSON autogenerados de "perfect laps"
-│   │       ├── multi_goal_navigator.py # Loop principal (CLI + Pure Pursuit)
+│   │       ├── multi_goal_navigator.py # Loop principal (CLI + Pure Pursuit + APF + Lane-Assist)
+│   │       ├── lane_detector.py        # 👁️  Visión Artificial — detección amarillo/blanco (v13)
 │   │       ├── telemetry_dashboard.py  # GUI de Instrumentación Analítica MATLAB
 │   │       ├── odom_tf_broadcaster.py  # Sistema de Referencia Geométrico
 │   │       └── track_visualizer.py     # RViz Mesh Exporter
@@ -128,7 +204,7 @@ roboracer-autonomous-stack/
 
 ---
 
-## 🚀 7. Manual Rápido (Comandos de Uso)
+## 🚀 8. Manual Rápido (Comandos de Uso)
 
 ### Paso 1: Lanzar la Simulación (Terminal 1)
 ```bash
@@ -144,13 +220,21 @@ cd ~/Documents/Assesment-Auto
 colcon build --symlink-install
 source install/setup.bash
 
-# Lanzamos el sincronizador de RViz, pista y telemetría (corriendo de fondo)
+# Lanzamos el sincronizador de RViz, pista, telemetría y visión (corriendo de fondo)
 ros2 run roboracer_racing odom_tf &
 ros2 run roboracer_racing track_viz &
 ros2 run roboracer_racing telemetry &
+ros2 run roboracer_racing lane_detector &
 
 # Lanzamos el Controlador Multipunto CLI
 ros2 run roboracer_racing multi_goal
+```
+
+### (Opcional) Terminal 3 — Visualización del Lane Detector
+```bash
+ros2 run rqt_image_view rqt_image_view /lane/image_debug
+# Verás la cámara frontal con overlay amarillo/blanco, líneas fit,
+# centro de carril estimado y cuadro HUD de estado.
 ```
 
 ### Paso 3: Interactuar
@@ -162,17 +246,30 @@ ros2 run roboracer_racing multi_goal
 
 ---
 
-## 📊 8. Plan de Trabajo Restante
+## 📊 9. Plan de Trabajo Restante
 
 **✅ Fase 1: Simulación y RViz Completa.**
 **✅ Fase 2: Control Time-Trial Básico.**
 **✅ Fase 3: Evasión Inteligente (Autonomous Racing).**
    * Campos de fuerza (APF) y frenado curvo adaptativo.
-   * Interacción física Gazebo <> RViz (Spawning dinámico).
+   * Interacción física Gazebo ↔ RViz (Spawning dinámico).
    * Telemetría de alta densidad (Gx, Clearance, AI Vision).
 
+**✅ Fase 3.5: Visión Artificial Activa (v13).**
+   * Detector OpenCV dual-color (amarillo/blanco) con ROI trapezoidal y Hough fit.
+   * Modelo de centro de carril con fallback por ancho fijo.
+   * Fusión `k_lane · o · conf` en el controlador, subordinada al APF.
+   * Recalibración completa de cámaras: FOV, pitch y simetría lateral.
+   * Dashboard con HUD de confianza en vivo.
+
 **⏳ Fase 4: Head-to-Head (Siguiente paso lógico)**
-   * Modificar `test_world.sdf` para *spawnear* dos QCars e implementar detección adversaria.
+   * Nodo `ghost_car.py` con modos `static` y `route` (seguimiento de waypoints).
+   * Detección adversaria vía `/ghost/odom` → obstáculo dinámico en el APF.
+   * Overtake logic agresivo-seguro: usar `sector_clearance` para elegir carril de rebase.
+   * Nuevo estado visual `OVERTAKE` en el dashboard.
+
+**⏳ Fase 5: Launch Unificado**
+   * `competition.launch.py` que arranca odom_tf + track_viz + telemetry + lane_detector + multi_goal + ghost (opcional) de un solo comando.
 
 ---
 *"El que no arriesga, no gana la carrera."* 🏁
