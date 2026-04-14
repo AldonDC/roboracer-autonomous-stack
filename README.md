@@ -106,15 +106,15 @@ El algoritmo ejecuta un pipeline clásico de 5 etapas a 30 Hz.
 
 **Etapa 2 — Doble máscara HSV.** Se generan dos máscaras binarias en paralelo, una por color objetivo:
 
-$$M_{yellow}(p) = \mathbf{1}\bigl[ H(p) \in [18, 38] \,\land\, S(p) \in [80, 255] \,\land\, V(p) \in [80, 255] \bigr]$$
+$$M_{yellow}(p) = 1 \cdot \left[ H(p) \in [18, 38] \land S(p) \in [80, 255] \land V(p) \in [80, 255] \right]$$
 
-$$M_{white}(p) = \mathbf{1}\bigl[ S(p) \leq 80 \,\land\, V(p) \geq 140 \bigr]$$
+$$M_{white}(p) = 1 \cdot \left[ S(p) \leq 80 \land V(p) \geq 140 \right]$$
 
 **Etapa 3 — Apertura + Cierre morfológico.** Elimina ruido de sal/pimienta y conecta segmentos fragmentados con un kernel rectangular de $5 \times 5$.
 
 **Etapa 4 — Region of Interest (ROI) trapezoidal.** Se aplica una máscara poligonal que conserva solo la mitad inferior de la imagen, descartando cielo y horizonte:
 
-$$\text{ROI} = \bigl\{ (0.02w,\, h),\; (0.20w,\, 0.55h),\; (0.80w,\, 0.55h),\; (0.98w,\, h) \bigr\}$$
+$$\text{ROI} = \left\{ (0.02w, h), (0.20w, 0.55h), (0.80w, 0.55h), (0.98w, h) \right\}$$
 
 **Etapa 5 — Detección de líneas.** Canny + `HoughLinesP` extrae segmentos; luego se ajusta una recta $x = my + b$ por mínimos cuadrados en cada lado.
 
@@ -122,7 +122,14 @@ $$\text{ROI} = \bigl\{ (0.02w,\, h),\; (0.20w,\, 0.55h),\; (0.80w,\, 0.55h),\; (
 
 Sea $x_Y$ el $x$ del ajuste de la línea amarilla en la base de la imagen, $x_W$ el de la blanca, y $w_{lane}$ el ancho medio de carril asumido (28% del ancho de imagen). El centro de carril se calcula según las detecciones disponibles:
 
-$$c_{lane} = \begin{cases} \dfrac{x_Y + x_W}{2} & \text{ambas líneas} \\ x_Y + w_{lane} & \text{solo amarillo} \\ x_W - w_{lane} & \text{solo blanco} \\ \text{indefinido} & \text{ninguna} \end{cases}$$
+$$
+c_{lane} = \begin{cases} 
+\frac{x_Y + x_W}{2} & \text{si ambas líneas detectadas} \\ 
+x_Y + w_{lane} & \text{solo amarillo} \\ 
+x_W - w_{lane} & \text{solo blanco} \\ 
+\text{ninguna} & \text{sin estimación} 
+\end{cases}
+$$
 
 con niveles de confianza asociados:
 
@@ -147,7 +154,7 @@ $$\delta_{final} = \delta_{PP} + \delta_{APF} + \delta_{lane}$$
 
 donde el término de visión se activa condicionalmente:
 
-$$\delta_{lane} = \begin{cases} k_{lane} \cdot o \cdot \text{conf} & \text{si } \text{conf} > 0.25 \\ 0 & \text{en otro caso} \end{cases}$$
+$$\delta_{lane} = \begin{cases} k_{lane} \cdot o \cdot \text{conf} & \text{si } \text{conf} > 0.25 \\ 0 & \text{otros casos} \end{cases}$$
 
 Con $k_{lane} = 0.18$ como ganancia de lane-assist (intencionalmente baja para afinar, no comandar).
 
