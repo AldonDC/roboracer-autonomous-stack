@@ -1,5 +1,5 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, ExecuteProcess, RegisterEventHandler, DeclareLaunchArgument, OpaqueFunction, SetEnvironmentVariable
+from launch.actions import IncludeLaunchDescription, ExecuteProcess, RegisterEventHandler, DeclareLaunchArgument, OpaqueFunction, SetEnvironmentVariable, LogInfo
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.actions import Node
@@ -86,22 +86,34 @@ def nodes_to_execute(context, *args, **kwargs):
         arguments=['-d', rviz_config_path]
     )
 
-    display_robot_gazebo = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([
-            gazebo_launch_path,
-            '/gz_sim.launch.py'
-        ]), launch_arguments={'gz_args':f'{gazebo_world_path} -r -v 4'}.items()
-    )
+    # --- Dynamic Spawn Logic (Robust Version) ---
+    world_name = os.path.basename(world)
+    log_actions = []
+
+    if 'oschersleben' in world_name.lower():
+        log_actions.append(LogInfo(msg=f'\n[INFO] 🏎️  ROBORACER: Detectada PISTA PRO ({world_name}). Usando meta (0,0).\n'))
+        spawn_x, spawn_y, spawn_z, spawn_yaw = '0.0', '0.0', '0.05', '2.86'
+    else:
+        log_actions.append(LogInfo(msg=f'\n[INFO] 🧪 ROBORACER: Detectado MUNDO DE PRUEBAS ({world_name}). Usando coordenadas originales.\n'))
+        spawn_x, spawn_y, spawn_z, spawn_yaw = '-0.1375', '0.32', '0.0025', '-1.57079633'
 
     spawn_entity_node = Node(
         package="ros_gz_sim",
         executable="create",
         arguments=['-topic', '/robot_description',
                    '-entity', 'qcar',
-                   '-x', '-0.1375',
-                   '-y', '0.32',
-                   '-z', '0.0025',
-                   '-Y', '-1.57079633']
+                   '-x', spawn_x,
+                   '-y', spawn_y,
+                   '-z', spawn_z,
+                   '-Y', spawn_yaw,
+                   '--timeout', '30.0']
+    )
+
+    display_robot_gazebo = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            gazebo_launch_path,
+            '/gz_sim.launch.py'
+        ]), launch_arguments={'gz_args':f'{gazebo_world_path} -r -v 4'}.items()
     )
 
     bridge_node = Node(
@@ -122,6 +134,7 @@ def nodes_to_execute(context, *args, **kwargs):
                                    output='screen')
     
     return [
+        *log_actions,
         RegisterEventHandler(
             event_handler=OnProcessExit(target_action=spawn_entity_node,
                                         on_exit=[joint_state])),

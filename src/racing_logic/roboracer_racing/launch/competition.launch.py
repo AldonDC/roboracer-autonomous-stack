@@ -42,7 +42,7 @@ def generate_launch_description():
         package='roboracer_racing',
         executable='track_viz',
         name='track_visualizer',
-        parameters=[{'use_sim_time': True}],
+        parameters=[{'use_sim_time': True, 'world': world_config}],
         output='screen'
     )
 

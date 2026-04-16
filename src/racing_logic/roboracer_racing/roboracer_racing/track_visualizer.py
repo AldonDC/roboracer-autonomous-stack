@@ -17,38 +17,45 @@ class TrackVisualizer(Node):
 
         self.marker_pub = self.create_publisher(Marker, '/viz/track', 10)
 
+        # Declarar parámetro de mundo (default a test_world para no romper nada)
+        self.declare_parameter('world', 'test_world.sdf')
+        world_name = self.get_parameter('world').get_parameter_value().string_value
+        
         # Publicar cada 2 segundos (latched marker)
         self.timer = self.create_timer(2.0, self.publish_track)
 
-        # Encontrar el mesh de la pista
         pkg_dir = get_package_share_directory('roboracer_gazebo')
-        self.track_mesh_path = os.path.join(pkg_dir, 'models', 'track', 'meshes', 'qcar_track.obj')
+        self.walls = []
+
+        if 'oschersleben' in world_name.lower():
+            self.get_logger().info(f'🏎️  ROBORACER VIZ: Cambiando a modo OSCHERSLEBEN PRO')
+            self.track_mesh_path = os.path.join(pkg_dir, 'models', 'oschersleben_pro', 'meshes', 'track.obj')
+            # En Oschersleben la posición es 0,0
+            self.track_pose = {'x': 0.0, 'y': 0.0, 'z': 0.0}
+        else:
+            self.get_logger().info(f'🧪 ROBORACER VIZ: Modo Entorno de Pruebas')
+            self.track_mesh_path = os.path.join(pkg_dir, 'models', 'track', 'meshes', 'qcar_track.obj')
+            self.track_pose = {'x': -0.0036, 'y': 0.0002, 'z': 0.0012}
+            
+            # Solo añadir paredes en mundos de pruebas
+            short_wall_mesh = os.path.join(pkg_dir, 'models', 'wall_4_8x0_25', 'meshes', 'wood_wall_short.obj')
+            long_wall_mesh = os.path.join(pkg_dir, 'models', 'wall_6_1x0_25', 'meshes', 'wood_wall_long.obj')
+            
+            if os.path.exists(short_wall_mesh):
+                self.walls.append({'mesh': short_wall_mesh, 'x': 0.0, 'y': -3.05, 'z': 0.125, 'yaw': 0.0})
+                self.walls.append({'mesh': short_wall_mesh, 'x': 0.0, 'y': 3.05, 'z': 0.125, 'yaw': 0.0})
+            if os.path.exists(long_wall_mesh):
+                self.walls.append({'mesh': long_wall_mesh, 'x': 2.4, 'y': 0.0, 'z': 0.125, 'yaw': 1.5708})
+                self.walls.append({'mesh': long_wall_mesh, 'x': -2.4, 'y': 0.0, 'z': 0.125, 'yaw': 1.5708})
 
         if os.path.exists(self.track_mesh_path):
             self.get_logger().info(f'🏁 Track mesh found: {self.track_mesh_path}')
         else:
             self.get_logger().error(f'❌ Track mesh NOT found: {self.track_mesh_path}')
 
-        # Encontrar los meshes de las paredes
+        # Visualizador de paredes
         self.wall_pub = self.create_publisher(Marker, '/viz/walls', 10)
         self.wall_timer = self.create_timer(2.0, self.publish_walls)
-
-        # Datos de las paredes desde el world file
-        self.walls = []
-
-        # Short walls (4.8m)
-        short_wall_mesh = os.path.join(pkg_dir, 'models', 'wall_4_8x0_25', 'meshes', 'wood_wall_short.obj')
-        if os.path.exists(short_wall_mesh):
-            self.walls.append({'mesh': short_wall_mesh, 'x': 0.0, 'y': -3.05, 'z': 0.125, 'yaw': 0.0})
-            self.walls.append({'mesh': short_wall_mesh, 'x': 0.0, 'y': 3.05, 'z': 0.125, 'yaw': 0.0})
-
-        # Long walls (6.1m)
-        long_wall_mesh = os.path.join(pkg_dir, 'models', 'wall_6_1x0_25', 'meshes', 'wood_wall_long.obj')
-        if os.path.exists(long_wall_mesh):
-            self.walls.append({'mesh': long_wall_mesh, 'x': 2.4, 'y': 0.0, 'z': 0.125, 'yaw': 1.5708})
-            self.walls.append({'mesh': long_wall_mesh, 'x': -2.4, 'y': 0.0, 'z': 0.125, 'yaw': 1.5708})
-
-        self.get_logger().info(f'🧱 Found {len(self.walls)} wall meshes')
 
     def publish_track(self):
         if not os.path.exists(self.track_mesh_path):
@@ -64,10 +71,10 @@ class TrackVisualizer(Node):
         m.mesh_resource = f'file://{self.track_mesh_path}'
         m.mesh_use_embedded_materials = True
 
-        # Posición del track (del world file)
-        m.pose.position.x = -0.0036
-        m.pose.position.y = 0.0002
-        m.pose.position.z = 0.0012
+        # Posición del track dinámica
+        m.pose.position.x = self.track_pose['x']
+        m.pose.position.y = self.track_pose['y']
+        m.pose.position.z = self.track_pose['z']
         m.pose.orientation.w = 1.0
 
         m.scale.x = 1.0

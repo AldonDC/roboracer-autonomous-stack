@@ -3,8 +3,8 @@
 > **Alfonso D. — Tecnológico de Monterrey**
 > Materia: Assesment
 > Asesores: Dr. Daniel Sosa-Ceron · Dr. Jorge A. Reyes-Avendaño
-> Versión Actual: **v13.0 — Vision-Fused Intelligent Racing**
-> Última actualización: Abril 2026
+> Versión Actual: **v15.0 — Professional Oschersleben Ecosystem**
+> Última actualización: Abril 2026 (Pro Edition)
 
 [**Ver Video Demostrativo del QCar (Navegación Pure Pursuit)**](https://github.com/AldonDC/roboracer-autonomous-stack/raw/main/docs/assets/demo_rviz.webm)
 
@@ -28,6 +28,13 @@ Para tener un entorno de pruebas hiperrealista, se recreó la pista oficial de l
 Para evitar usar GUIs externas lentas (como Matplotlib) y mantener un workflow estándar de robótica, toda la interacción ocurre en **RViz**:
 * `odom_tf_broadcaster.py`: Traduce la odometría plana de Gazebo en transformaciones TF formales (`world` → `base_link`), moviendo al carro en RViz en tiempo real.
 * `track_visualizer.py`: Extrae los vértices del `.obj` de la pista de Gazebo y los transmite como `Marker` a RViz, permitiendo ver la pista real como plantilla base.
+
+### 2.3. Oschersleben Pro (v15.0)
+Para pruebas de rendimiento de nivel profesional, se implementó el circuito de **Oschersleben** con modelado 3D avanzado:
+* **Mesh de Alta Densidad**: Un entorno 100% offline basado en mallas locales (`track.obj`) que elimina dependencias de red.
+* **Safety Cars F1TENTH**: Integración de obstáculos basados en las mallas originales del simulador F1TENTH (`chassis.stl`, `wheels`, `hokuyo`).
+* **Física y Offsets**: Los obstáculos respetan los desplazamientos de chasis originales (XACRO offsets) para una detección láser ultra-precisa.
+* **Estilo D8T**: Acabado visual con chasis gris y llantas rojas de alta visibilidad para validación de visión artificial.
 
 ---
 
@@ -333,6 +340,12 @@ ros2 run rqt_image_view rqt_image_view /lane/image_debug
    * Migración completa de Matplotlib a **PyQtGraph** (60+ FPS).
    * HUD de telemetría optimizado para renderizado asíncrono.
    * Proyección dinámica de LiDAR-to-Camera Fusion.
+
+**✅ Fase 8: Professional Simulation Ecosystem (v15.0).**
+   * Integración de circuito Oschersleben con modelado de mallas local.
+   * Obstáculos F1TENTH de alta fidelidad con ensamblaje técnico real.
+   * **Smart World Selector**: Lógica de spawn condicional en el Launch File que adapta el origen del robot según el mundo seleccionado (Pro vs Test).
+   * **Dynamic Track Viz**: El visualizador de RViz sincroniza el mesh mostrado con el entorno activo en Gazebo.
 
 ---
 *"El que no arriesga, no gana la carrera."* 🏁
