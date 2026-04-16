@@ -14,7 +14,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import Vector3Stamped, PointStamped, PoseStamped
 from nav_msgs.msg import Odometry, Path
 from visualization_msgs.msg import Marker, MarkerArray
-from std_msgs.msg import Empty, Float32, Float32MultiArray
+from std_msgs.msg import Empty, Float32, Float32MultiArray, Bool
 from sensor_msgs.msg import LaserScan
 import math
 import numpy as np
@@ -49,9 +49,17 @@ class MultiGoalNavigator(Node):
         self.declare_parameter('cmd_topic', '/qcar_sim/user_command')
         self.declare_parameter('loop', False)
 
+        # STOP sign behaviour — parada completa 5 s y reactivación por distancia.
+        self.declare_parameter('stop_wait_time', 5.0)
+        self.declare_parameter('stop_cooldown_dist', 2.0)
+        self.declare_parameter('stop_brake_approach', True)
+
         self.v_ref = self.get_parameter('v_ref').value
         self.arrival_radius = self.get_parameter('arrival_radius').value
         self.loop = self.get_parameter('loop').value
+        self.stop_wait_time = float(self.get_parameter('stop_wait_time').value)
+        self.stop_cooldown_dist = float(
+            self.get_parameter('stop_cooldown_dist').value)
         self.L = 0.256
         self.max_steer = 0.5
 
@@ -88,7 +96,13 @@ class MultiGoalNavigator(Node):
         self.repel_vec_x = 0.0
         self.repel_vec_y = 0.0
         self.gap_angles = (0.0, 0.0)
-        self.last_delta = 0.0  # Para Histeresis
+        # Phase stop signals
+        self.stop_sign_seen = False
+        self.is_waiting_at_stop = False
+        self.stop_wait_start_time = 0.0
+        self.last_stop_sign_time = 0.0  # Cooldown temporal (fallback)
+        self.last_stop_pose = None      # (x,y) donde se hizo la última parada
+        self.stop_brake_active = False  # Frena gradual en cuanto ve la señal
 
         
         # Virtual obstacles (Fase 3+)
@@ -132,6 +146,9 @@ class MultiGoalNavigator(Node):
         )
         self.lane_conf_sub = self.create_subscription(
             Float32, '/lane/confidence', self._lane_conf_cb, 10
+        )
+        self.stop_sign_sub = self.create_subscription(
+            Bool, '/lane/stop_sign', self._stop_sign_cb, 10
         )
 
         # Control loop 50Hz
@@ -339,6 +356,40 @@ class MultiGoalNavigator(Node):
     def _lane_conf_cb(self, msg):
         self.lane_conf = float(msg.data)
 
+    def _stop_sign_cb(self, msg):
+        """Dispara la parada cuando la cámara confirma una señal.
+
+        Cooldown por DISTANCIA (no solo por tiempo): tras una parada, hay
+        que alejarse `stop_cooldown_dist` metros de esa pose antes de
+        permitir otra. Así, dos señales sucesivas en puntos distintos
+        SÍ disparan dos paradas, pero una misma señal nunca dispara dos.
+        """
+        self.stop_sign_seen = bool(msg.data)
+        if not self.navigating or self.is_waiting_at_stop:
+            return
+        if not self.stop_sign_seen:
+            return
+
+        # ── Cooldown por distancia desde la última parada ───────────────
+        if self.last_stop_pose is not None:
+            dx = self.current_x - self.last_stop_pose[0]
+            dy = self.current_y - self.last_stop_pose[1]
+            if math.hypot(dx, dy) < self.stop_cooldown_dist:
+                return  # aún demasiado cerca — posible reobservación
+
+        now = self.get_clock().now().nanoseconds / 1e9
+        # Cooldown temporal mínimo como red de seguridad (3 s)
+        if now - self.last_stop_sign_time < 3.0:
+            return
+
+        self.get_logger().info(
+            f'🛑 [STOP] Señal detectada. Frenando {self.stop_wait_time:.1f} s...')
+        self.is_waiting_at_stop = True
+        self.stop_brake_active = False
+        self.stop_wait_start_time = now
+        self.last_stop_sign_time = now
+        self.last_stop_pose = (self.current_x, self.current_y)
+
     def odom_cb(self, msg):
         self.current_x = msg.pose.pose.position.x
         self.current_y = msg.pose.pose.position.y
@@ -516,6 +567,29 @@ class MultiGoalNavigator(Node):
         if not self.navigating or not self.waypoints:
             return
 
+        now = self.get_clock().now().nanoseconds / 1e9
+        
+        # ── Manejo de estado de espera en STOP ────────────────────────────
+        if self.is_waiting_at_stop:
+            elapsed = now - self.stop_wait_start_time
+            if elapsed < self.stop_wait_time:
+                # Mantener completamente parado.
+                cmd = Vector3Stamped()
+                cmd.header.stamp = self.get_clock().now().to_msg()
+                cmd.vector.x = 0.0
+                cmd.vector.y = 0.0
+                self.cmd_pub.publish(cmd)
+                self.current_v = 0.0
+                self.get_logger().info(
+                    f'⏳ STOP... {self.stop_wait_time - elapsed:.1f}s',
+                    throttle_duration_sec=1.0)
+                return
+            else:
+                self.get_logger().info(
+                    '🟢 READY TO GO! Reanudando marcha.')
+                self.is_waiting_at_stop = False
+                self.stop_brake_active = False
+
         if self.current_wp_index >= len(self.waypoints):
             if self.loop:
                 self.current_wp_index = 0
@@ -656,17 +730,31 @@ class MultiGoalNavigator(Node):
             else:
                 v_target = max(0.25, self.v_ref * math.sqrt(dist / slowdown_range))
 
-        # Pure Pursuit logic
+        # Pure Pursuit con lookahead adaptativo a la velocidad.
+        # Ld = clamp(k_v * v + l_min, l_min, l_max). Más rápido → mira más lejos
+        # (menos jitter); más lento → mira más cerca (encara bien los WPs).
         alpha = normalize_angle(math.atan2(dy, dx) - self.current_yaw)
-        lookahead = max(dist * 0.7, 0.5)
+        l_min, l_max = 0.55, 1.60
+        lookahead_v = 0.55 * max(self.current_v, 0.3) + l_min
+        lookahead = float(np.clip(min(lookahead_v, dist * 0.9), l_min, l_max))
         delta = math.atan2(2.0 * self.L * math.sin(alpha), lookahead)
         delta = float(np.clip(delta, -self.max_steer, self.max_steer))
 
         # Curvature-Aware Velocity Limit: v = v_ref / (1 + k * |delta|)
-        # This mimics professional racing where you brake for tight corners.
-        k_curv = 1.25 # Aggressive braking in corners
+        # k_curv un poco menor → frena en curvas pero sin ahogar la velocidad.
+        k_curv = 1.05
         v_curv_limit = v_target / (1.0 + k_curv * abs(delta))
         final_v = float(np.clip(v_curv_limit, 0.20, v_target))
+
+        # ── Freno de aproximación a STOP (antes del stop completo) ───────
+        # Si la cámara "ve" la señal pero aún no se confirmó (el callback
+        # dispara cuando confirma), bajamos v para llegar controlados.
+        if (self.get_parameter('stop_brake_approach').value
+                and self.stop_sign_seen and not self.is_waiting_at_stop):
+            final_v = min(final_v, self.v_ref * 0.55)
+            self.stop_brake_active = True
+        else:
+            self.stop_brake_active = False
 
         # Rampa suave (Second-order smoothing for "Premium" feel)
         accel_step = 0.08

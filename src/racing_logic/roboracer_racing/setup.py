@@ -33,6 +33,7 @@ setup(
             'track_viz = roboracer_racing.track_visualizer:main',
             'planner_gui = roboracer_racing.waypoint_planner_gui:main',
             'telemetry = roboracer_racing.telemetry_dashboard:main',
+            'telemetry_fast = roboracer_racing.telemetry_dashboard_fast:main',
             'lane_detector = roboracer_racing.lane_detector:main',
         ],
     },

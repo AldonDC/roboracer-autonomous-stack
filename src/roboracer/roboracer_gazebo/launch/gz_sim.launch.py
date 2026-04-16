@@ -38,11 +38,10 @@ def start_vehicle_control():
 def nodes_to_execute(context, *args, **kwargs):
     gazebo_launch_path = os.path.join(get_package_share_directory('ros_gz_sim'), 'launch')
 
+    # Add Dynamic World Selection (from professor's update)
+    world = str(LaunchConfiguration('world').perform(context))
     gazebo_world_path = os.path.join(get_package_share_path('roboracer_gazebo'),
-                                     'worlds', 'test_world.sdf')
-    # gazebo_world_path = 'empty.sdf'
-
-    # display_launch_path = os.path.join(get_package_share_directory('differential_robot_description'), 'launch')
+                                     'worlds', world)
 
     urdf_path = os.path.join(get_package_share_path('roboracer_description'),
                              'urdf', 'qcar_system.urdf.xacro')
@@ -92,8 +91,6 @@ def nodes_to_execute(context, *args, **kwargs):
             gazebo_launch_path,
             '/gz_sim.launch.py'
         ]), launch_arguments={'gz_args':f'{gazebo_world_path} -r -v 4'}.items()
-        # Default --physics-engine is: gz-physics-dartsim-plugin'
-        # --physics-engine gz-physics-bullet-featherstone-plugin
     )
 
     spawn_entity_node = Node(
@@ -101,25 +98,16 @@ def nodes_to_execute(context, *args, **kwargs):
         executable="create",
         arguments=['-topic', '/robot_description',
                    '-entity', 'qcar',
-                   '-x', '-0.1375',#'-x', '-1.2711',
-                   '-y', '0.32',#'-y', '-1.667',#'-y', '-2.5010',
-                   '-z', '0.0025',#'-z', '0.0025',
-                   '-Y', '-1.57079633']#'-Y', '-0.7405']
+                   '-x', '-0.1375',
+                   '-y', '0.32',
+                   '-z', '0.0025',
+                   '-Y', '-1.57079633']
     )
 
     bridge_node = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
         parameters=[{'config_file': gazebo_config_path}]
-        # parameters=[{'use_sim_time': True}],
-        # arguments=[
-        #     '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
-        #     # '/robot_description@std_msgs/msg/String',
-        #     # '/differential_robot/odometry@nav_msgs/msg/Odometry',
-        #     '/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
-        #     '/cmd_vel@geometry_msgs/msg/Twist[gz.msgs.Twist'
-        #     '/cmd_vel@gz.msgs.Twist[geometry_msgs/msg/Twist'
-        # ]
     )
 
     # Start controllers
@@ -158,6 +146,12 @@ def generate_launch_description():
         description='Parameter file with all property values of the robot'
     )
 
+    world_arg = DeclareLaunchArgument(
+        'world', 
+        default_value= 'test_world.sdf',
+        description='World file to be loaded in Gazebo. (test_world.sdf, stop_test_world.sdf, etc.)'
+    )
+
     models_path = os.path.join(get_package_share_path('roboracer_gazebo'), 'models')
 
     return LaunchDescription([
@@ -166,5 +160,6 @@ def generate_launch_description():
             name='GZ_SIM_RESOURCE_PATH',
             value=[models_path, ':', os.environ.get('GZ_SIM_RESOURCE_PATH', '')]
         ),
-        ign_arg
+        ign_arg,
+        world_arg
         ] + [OpaqueFunction(function=nodes_to_execute)])

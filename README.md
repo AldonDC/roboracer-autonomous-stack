@@ -222,9 +222,9 @@ El *core* de nuestra lógica customizada habita en el paquete `roboracer_racing`
 
 | Nodo (Python) | Descripción Técnica y Funcionalidad Destacada |
 |:--------------|:----------------------------------------------|
-| `multi_goal_navigator.py` | **Planner & Controller (v13).** <br>✅ **Gazebo Spawner**: Interfaz directa para inyectar modelos 3D físicos en el simulador vía RViz.<br>✅ **Goal-Biased Gap Following**: Selección inteligente de huecos de escape alineada con la meta.<br>✅ **Unified APF Control**: Fusión de Pure Pursuit con gradientes de repulsión a 50Hz.<br>✅ **Lane-Assist Fusion (v13)**: Suma un término de corrección lateral desde `lane_detector`, ponderado por confianza, sin comprometer la prioridad de LiDAR/APF en emergencia. |
-| `lane_detector.py` | **Visión Artificial Activa (v13, NUEVO).** <br>✅ **Dual HSV Masking**: Segmentación paralela amarillo (divisoria central) + blanco (curb derecho).<br>✅ **Hough Line Fit**: Ajuste lineal robusto $x = my + b$ por mínimos cuadrados en cada lado.<br>✅ **Fallback por ancho fijo**: Estima centro de carril aun con una sola línea detectada.<br>✅ **Publicación dual**: `/lane/center_offset` (Float32) + `/lane/confidence` (Float32) + `/lane/image_debug` (Image anotada con overlay). |
-| `telemetry_dashboard.py` | **Engineering Station (v12).** <br>✅ **Blueprint Aesthetic**: Interfaz de alta densidad con paleta de colores profesional blanca/azul.<br>✅ **Perception Fusion**: Overlay de LiDAR sobre las cámaras y detección de objetos clusterizada.<br>✅ **Engineering Metrics**: Gráficas de aceleración Gx, fuerza APF e histéresis de dirección.<br>✅ **Lane HUD (v13)**: Badge centrado sobre la cámara frontal con estado `FULL / YELLOW-ONLY / WHITE-ONLY / BLIND` + barra horizontal de offset en vivo. |
+| `multi_goal_navigator.py` | **Planner & Controller (v14).** <br>✅ **Gazebo Spawner**: Interfaz directa para inyectar modelos 3D físicos en el simulador vía RViz.<br>✅ **Lane-Assist & Stop-Go**: Fusión de visión amarillo/blanco y **parada inteligente en señales** con cooldown por distancia. |
+| `lane_detector.py` | **Visión Artificial Activa (v14).** <br>✅ **Dual HSV Masking**: Segmentación paralela amarillo + blanco.<br>✅ **Ultra-Sensitive Stop**: Detección de señales rojas optimizada para baja saturación. |
+| `telemetry_dashboard_fast.py` | **High-Speed Engineering Station (v14, NUEVO).** <br>✅ **PyQtGraph Engine**: 60+ FPS sin lag.<br>✅ **Perception Fusion**: Overlay de LiDAR y clusters sobre cámaras en tiempo real.<br>✅ **STOP HUD**: Alerta visual gigante al detectar señales de tráfico. |
 | `odom_tf_broadcaster.py` | **Puente Espacial.** Lee `/qcar_sim/odom` originado por Gazebo y expone el *Transform Tree* (`world` → `base_link`) para que RViz acople el modelo 3D del carro perfectamente con la física real. |
 | `track_visualizer.py` | **Pintor 3D de RViz.** Extrapola los vértices del `.obj` de la pista de Gazebo y transmite un `visualization_msgs/Marker` gigante a RViz, permitiendo ver la pista real como plantilla y referencia topológica. |
 | `keyboard_teleop.py` | **Conducción Manual.** Script WASD de precisión para validación de hardware y trazado empírico inicial. |
@@ -262,27 +262,20 @@ roboracer-autonomous-stack/
 
 ## 🚀 8. Manual Rápido (Comandos de Uso)
 
-### Paso 1: Lanzar la Simulación (Terminal 1)
+### Paso 1: Lanzar el Entorno Pro (Terminal 1)
 ```bash
 cd ~/Documents/Assesment-Auto
-./scripts/launch_sim.sh
+./scripts/launch_pro.sh
 ```
-*Esto arranca Gazebo con el QCar, la pista, inicializa los puentes ROS y abre RViz listo.*
+*Este es un menú interactivo que te permite elegir el archivo de mundo (SDF) y arranca **TODO** automáticamente: Gazebo, RViz, Telemetría, Visión y Sincronización.*
 
-### Paso 2: Preparar Control, Telemetría y CLI (Terminal 2)
+### Paso 2: Ejecutar el Cerebro Autónomo (Terminal 2)
 ```bash
 source /opt/ros/jazzy/setup.bash
 cd ~/Documents/Assesment-Auto
-colcon build --symlink-install
 source install/setup.bash
 
-# Lanzamos el sincronizador de RViz, pista, telemetría y visión (corriendo de fondo)
-ros2 run roboracer_racing odom_tf &
-ros2 run roboracer_racing track_viz &
-ros2 run roboracer_racing telemetry &
-ros2 run roboracer_racing lane_detector &
-
-# Lanzamos el Controlador Multipunto CLI
+# Solo necesitas lanzar el controlador CLI; el entorno visual ya está corriendo.
 ros2 run roboracer_racing multi_goal
 ```
 
@@ -324,8 +317,22 @@ ros2 run rqt_image_view rqt_image_view /lane/image_debug
    * Overtake logic agresivo-seguro: usar `sector_clearance` para elegir carril de rebase.
    * Nuevo estado visual `OVERTAKE` en el dashboard.
 
-**⏳ Fase 5: Launch Unificado**
-   * `competition.launch.py` que arranca odom_tf + track_viz + telemetry + lane_detector + multi_goal + ghost (opcional) de un solo comando.
+**✅ Fase 5: Launch Unificado y Optimización Pro.**
+   * `competition.launch.py` que integra simulación + periféricos en un solo flujo.
+   * `launch_pro.sh`: Launcher interactivo con selector de mundos SDF.
+   * Optimización de rendimiento en Telemetría (Subsampling + Thread Lock).
+   * Sincronización perfecta `use_sim_time` en todo el stack.
+
+**✅ Fase 6: Behavioral Vision — STOP Signs (v14.0).**
+   * Detector de color adaptativo (Dual-Range HSV Red) para señales.
+   * Region of Interest (ROI) lateral para señales de tráfico.
+   * Estado `WAITING` de 5 segundos con reanudación automática de ruta.
+   * Sistema de histéresis (Cooldown) para evitar paradas dobles en la misma señal.
+
+**✅ Fase 7: High-Performance Engine Telemetry (v14.1).**
+   * Migración completa de Matplotlib a **PyQtGraph** (60+ FPS).
+   * HUD de telemetría optimizado para renderizado asíncrono.
+   * Proyección dinámica de LiDAR-to-Camera Fusion.
 
 ---
 *"El que no arriesga, no gana la carrera."* 🏁

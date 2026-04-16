@@ -25,9 +25,10 @@ Suscribe:
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32, Bool
 import cv2
 import numpy as np
+import math
 
 
 def imgmsg_to_bgr(msg):
@@ -92,6 +93,19 @@ class LaneDetector(Node):
         # Ancho medio de carril (half-width) como fracción del ancho de imagen.
         self.declare_parameter('lane_half_width_frac', 0.28)
 
+        # ── Detección de señal STOP (multi-cue) ──────────────────────────────
+        # Área (px) — filtro de distancia. Señales lejanas dan blobs pequeños:
+        # subir min_area para ignorarlas y disparar solo a media/cerca.
+        self.declare_parameter('stop_min_area', 1200)
+        self.declare_parameter('stop_max_area', 60000)
+        # Confianza mínima por frame para sumar un voto.
+        self.declare_parameter('stop_min_confidence', 0.50)
+        # Nº de frames consecutivos con voto positivo para confirmar.
+        self.declare_parameter('stop_vote_needed', 3)
+        # Fracción de altura desde arriba donde se busca la señal (recorta suelo).
+        self.declare_parameter('stop_search_top_frac', 0.02)
+        self.declare_parameter('stop_search_bot_frac', 0.80)
+
         self.publish_debug = self.get_parameter('publish_debug').value
 
         image_topic = self.get_parameter('image_topic').value
@@ -100,9 +114,13 @@ class LaneDetector(Node):
         self.offset_pub = self.create_publisher(Float32, '/lane/center_offset', 10)
         self.conf_pub = self.create_publisher(Float32, '/lane/confidence', 10)
         self.dbg_pub = self.create_publisher(Image, '/lane/image_debug', 10)
+        self.stop_pub = self.create_publisher(Bool, '/lane/stop_sign', 10)
 
         self.last_offset = 0.0
         self.last_conf = 0.0
+        self.stop_vote_counter = 0        # Filtro temporal para STOP
+        self.last_stop_conf = 0.0         # Última confianza (0..1) del frame
+        self.last_stop_bbox = None        # Última bbox (x,y,w,h) o None
 
         self.get_logger().info(
             f'👁️  LANE DETECTOR v2 — Amarillo(centro) + Blanco(borde) — sub: {image_topic}')
@@ -134,6 +152,147 @@ class LaneDetector(Node):
         m = cv2.morphologyEx(m, cv2.MORPH_OPEN, k)
         m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, k)
         return m
+
+    # ── Máscara ROJA robusta (multi-rango + CLAHE) ──────────────────────────
+    def _red_mask(self, hsv):
+        """Detecta rojo con 3 bandas HSV + ecualización adaptativa del valor.
+
+        Por qué 3 bandas: el rojo cruza el círculo de Hue (0 y 180). Además
+        añadimos una tercera banda con saturación relajada para capturar
+        rojos descoloridos por sombra o sobre-exposición (iluminación variable).
+        CLAHE sobre el canal V compensa cambios de brillo sin afectar color,
+        así la señal sigue detectándose en sol fuerte, sombra o contraluz.
+        """
+        h_ch, s_ch, v_ch = cv2.split(hsv)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        v_eq = clahe.apply(v_ch)
+        hsv_eq = cv2.merge([h_ch, s_ch, v_eq])
+
+        # Banda 1: rojo "clásico" cerca de H=0
+        lo1, hi1 = np.array([0, 70, 55]), np.array([12, 255, 255])
+        # Banda 2: rojo "clásico" cerca de H=180 (wrap-around)
+        lo2, hi2 = np.array([165, 70, 55]), np.array([179, 255, 255])
+        # Banda 3: rojo desaturado / sombra — permite S baja con V medio-alto
+        lo3, hi3 = np.array([0, 35, 110]), np.array([15, 255, 255])
+        lo4, hi4 = np.array([160, 35, 110]), np.array([179, 255, 255])
+
+        m = cv2.inRange(hsv_eq, lo1, hi1)
+        m = cv2.bitwise_or(m, cv2.inRange(hsv_eq, lo2, hi2))
+        m = cv2.bitwise_or(m, cv2.inRange(hsv_eq, lo3, hi3))
+        m = cv2.bitwise_or(m, cv2.inRange(hsv_eq, lo4, hi4))
+
+        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        m = cv2.morphologyEx(m, cv2.MORPH_OPEN, k)
+        m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, k)
+        return m
+
+    # ── Detección de señal STOP (multi-cue) ──────────────────────────────────
+    def _detect_stop_sign(self, bgr, hsv):
+        """Retorna (confianza [0..1], bbox|None).
+
+        Combina 4 señales visuales (todas invariantes a orientación):
+          • COLOR:   máscara roja robusta (CLAHE + 3 bandas HSV).
+          • FORMA:   octágono vía approxPolyDP (6..10 vértices) + compacidad.
+          • TEXTO:   ratio de píxeles blancos dentro del blob rojo (letras
+                     STOP + borde → ~8..45%). Funciona con la señal al revés.
+          • POS:     sesgo por mitad superior de la imagen.
+        La confianza final es un mix ponderado, robusta a iluminación,
+        rotación (incluyendo señal invertida) y oclusión parcial.
+        """
+        h_img, w_img = bgr.shape[:2]
+        mask = self._red_mask(hsv)
+
+        # Recorte vertical: ignora cielo y suelo (mejor SNR y más rápido).
+        top_cut = int(h_img * float(self.get_parameter('stop_search_top_frac').value))
+        bot_cut = int(h_img * float(self.get_parameter('stop_search_bot_frac').value))
+        if top_cut > 0:
+            mask[:top_cut, :] = 0
+        if bot_cut < h_img:
+            mask[bot_cut:, :] = 0
+
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL,
+                                       cv2.CHAIN_APPROX_SIMPLE)
+        min_area = float(self.get_parameter('stop_min_area').value)
+        max_area = float(self.get_parameter('stop_max_area').value)
+
+        best_score = 0.0
+        best_bbox = None
+
+        for cnt in contours:
+            area = cv2.contourArea(cnt)
+            if area < min_area or area > max_area:
+                continue
+            x, y, w_c, h_c = cv2.boundingRect(cnt)
+            if w_c < 10 or h_c < 10:
+                continue
+
+            aspect = float(w_c) / float(h_c)
+            if aspect < 0.55 or aspect > 1.85:   # octágono ≈ cuadrado
+                continue
+
+            bbox_area = float(w_c * h_c)
+            solidity = area / bbox_area          # octágono ≈ 0.83
+            if solidity < 0.45:
+                continue
+
+            # Forma: nº vértices del polígono simplificado.
+            peri = cv2.arcLength(cnt, True)
+            if peri < 1e-3:
+                continue
+            approx = cv2.approxPolyDP(cnt, 0.035 * peri, True)
+            n_vert = len(approx)
+            if 6 <= n_vert <= 10:
+                shape_score = 1.0
+            elif 4 <= n_vert <= 12:
+                shape_score = 0.6
+            else:
+                shape_score = 0.25
+
+            # Compacidad 4πA/P² — octágono ≈ 0.95, cuadrado ≈ 0.79
+            compactness = 4.0 * math.pi * area / (peri * peri + 1e-6)
+            if compactness < 0.45:
+                continue
+
+            # Texto blanco dentro de la región roja (invariante a rotación).
+            roi_hsv = hsv[y:y + h_c, x:x + w_c]
+            if roi_hsv.size == 0:
+                continue
+            white_mask = cv2.inRange(roi_hsv,
+                                     np.array([0, 0, 170], dtype=np.uint8),
+                                     np.array([179, 75, 255], dtype=np.uint8))
+            roi_pixels = float(max(1, w_c * h_c))
+            white_ratio = float(np.count_nonzero(white_mask)) / roi_pixels
+            if 0.02 <= white_ratio <= 0.65:
+                # Pico en ~20%; lineal hacia los bordes del intervalo.
+                text_score = 1.0 - abs(white_ratio - 0.20) / 0.45
+                text_score = float(max(0.3, min(1.0, text_score)))
+            else:
+                # Sin texto claro: puede ser una señal lejana → no descartar.
+                text_score = 0.15
+
+            # Posición: recompensa mitad superior (señales cuelgan en alto).
+            cy = y + h_c * 0.5
+            if cy < h_img * 0.55:
+                pos_score = 1.0
+            else:
+                pos_score = max(0.4, 1.0 - (cy - h_img * 0.55) / (h_img * 0.30))
+
+            # Prior de tamaño: más grande → más probable confirmada.
+            size_score = float(np.clip(
+                (area - min_area) / max(1.0, max_area - min_area), 0.0, 1.0))
+            size_score = 0.3 + 0.7 * size_score
+
+            score = (0.35 * shape_score
+                     + 0.25 * text_score
+                     + 0.15 * pos_score
+                     + 0.15 * size_score
+                     + 0.10 * min(1.0, compactness * 1.05))
+
+            if score > best_score:
+                best_score = score
+                best_bbox = (x, y, w_c, h_c)
+
+        return float(best_score), best_bbox
 
     def _apply_roi(self, mask):
         h, w = mask.shape
@@ -212,6 +371,24 @@ class LaneDetector(Node):
         y_roi, poly = self._apply_roi(y_mask)
         w_roi, _ = self._apply_roi(w_mask)
 
+        # ── Detección STOP (multi-cue: color + forma + texto + posición) ────
+        stop_conf, stop_bbox = self._detect_stop_sign(bgr, hsv)
+        min_conf = float(self.get_parameter('stop_min_confidence').value)
+        vote_needed = int(self.get_parameter('stop_vote_needed').value)
+
+        # Voto temporal ponderado por confianza: alta confianza acelera el
+        # consenso; baja confianza decae suave (no desaparece con 1 frame malo).
+        if stop_conf >= min_conf:
+            delta_votes = 2 if stop_conf >= 0.65 else 1
+            self.stop_vote_counter = min(self.stop_vote_counter + delta_votes, 10)
+        else:
+            self.stop_vote_counter = max(self.stop_vote_counter - 1, 0)
+
+        stop_confirmed = (self.stop_vote_counter >= vote_needed)
+        candidate_found = stop_conf >= min_conf
+        self.last_stop_conf = stop_conf
+        self.last_stop_bbox = stop_bbox
+
         # Amarillo → línea izquierda (divisoria central)
         y_lines = self._hough(y_roi)
         y_pts = self._collect_segments(y_lines, 'left', img_cx)
@@ -257,6 +434,7 @@ class LaneDetector(Node):
         # Publicar
         self.offset_pub.publish(Float32(data=float(offset_norm)))
         self.conf_pub.publish(Float32(data=float(self.last_conf)))
+        self.stop_pub.publish(Bool(data=bool(stop_confirmed)))
 
         # ── Debug overlay ─────────────────────────────────────────────────────
         if self.publish_debug:
@@ -300,6 +478,25 @@ class LaneDetector(Node):
                 if abs(lx - cx_i) > 3:
                     cv2.arrowedLine(dbg, (cx_i, h - 45), (lx, h - 45),
                                     (0, 120, 255), 3, tipLength=0.25)
+            
+            # ── Alerta de señal STOP (bbox + confianza + badge) ─────────────
+            if self.last_stop_bbox is not None:
+                bx, by, bw, bh = self.last_stop_bbox
+                box_color = (0, 0, 255) if stop_confirmed else (
+                    0, 165, 255) if candidate_found else (0, 220, 220)
+                cv2.rectangle(dbg, (bx, by), (bx + bw, by + bh), box_color, 2)
+                label = f'STOP? {self.last_stop_conf:.2f} v={self.stop_vote_counter}'
+                cv2.putText(dbg, label, (bx, max(14, by - 6)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, box_color, 2)
+            if stop_confirmed:
+                cv2.rectangle(dbg, (w - 180, 20), (w - 20, 82),
+                              (0, 0, 255), -1)
+                cv2.putText(dbg, 'STOP', (w - 160, 65),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 4)
+                cv2.drawMarker(dbg, (w - 100, 120), (0, 0, 255),
+                               cv2.MARKER_TILTED_CROSS, 30, 5)
+            elif candidate_found:
+                cv2.circle(dbg, (w - 90, 50), 10, (0, 165, 255), -1)
 
             # ── HUD superior — cuadro de estado centrado ─────────────────────
             mode_color = {

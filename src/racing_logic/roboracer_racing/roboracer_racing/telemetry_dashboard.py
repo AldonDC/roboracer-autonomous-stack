@@ -22,6 +22,7 @@ import matplotlib.gridspec as gridspec
 from matplotlib.patches import FancyArrowPatch, Rectangle
 from matplotlib.colors import LinearSegmentedColormap, Normalize
 import numpy as np
+import cv2
 from collections import deque
 import threading
 
@@ -47,10 +48,10 @@ CAM_FRONT = '/qcar_sim/csi_front/image_raw'
 CAM_BACK  = '/qcar_sim/csi_back/image_raw'
 CAM_RIGHT = '/qcar_sim/csi_right/image_raw'
 
-# Camera intrinsics (640×480, ~65° H-FoV)
-CAM_W, CAM_H = 640, 480
-CAM_FX = CAM_FY = 490.0
-CAM_CX, CAM_CY = CAM_W / 2, CAM_H / 2
+# Camera intrinsics (Optimized: 400×300 downsampled)
+CAM_W, CAM_H = 400, 300
+CAM_FX = CAM_FY = 306.25
+CAM_CX, CAM_CY = 200.0, 150.0
 CAM_Z_OBS = 0.25   # assumed obstacle-centre height above ground [m]
 CAM_Z_CAM = 0.12   # camera height above ground [m]
 
@@ -246,6 +247,7 @@ class TelemetryDashboard(Node):
         self._cam_fps    = {'f': 0.0,  'b': 0.0,  'r': 0.0}
         self._cam_last_t = {'f': 0.0,  'b': 0.0,  'r': 0.0}
         self._cam_lock   = threading.Lock()
+        self.data_lock   = threading.Lock()
 
         self.get_logger().info(
             f'RoboRacer Telemetry v11  ·  3-cam fusion  ·  cluster={_CLUSTER_BACKEND}')
@@ -255,39 +257,41 @@ class TelemetryDashboard(Node):
             self.start_time = self.get_clock().now().nanoseconds / 1e9
         t = (self.get_clock().now().nanoseconds / 1e9) - self.start_time
         d = msg.data
-        if len(d) >= 5:
-            self.times.append(t);  self.v_target.append(d[0])
-            self.v_actual.append(d[1]);  self.steering.append(d[2])
-            self.dist_error.append(d[3]);  self.obs_state.append(d[4])
+        with self.data_lock:
+            if len(d) >= 5:
+                self.times.append(t);  self.v_target.append(d[0])
+                self.v_actual.append(d[1]);  self.steering.append(d[2])
+                self.dist_error.append(d[3]);  self.obs_state.append(d[4])
 
-            # Synchronized derived metrics
-            dt = t - self.t_last if self.t_last > 0 else 0.05
-            dv = d[1] - self.v_last
-            acc = dv / max(dt, 1e-3)
-            self.accel.append(acc)
-            self.v_last, self.t_last = d[1], t
-            
-            f_ax, f_ay = (float(d[15]), float(d[16])) if len(d) >= 17 else (0.0, 0.0)
-            f_rx, f_ry = (float(d[17]), float(d[18])) if len(d) >= 19 else (0.0, 0.0)
-            self.f_mag.append(math.hypot(f_ax+f_rx, f_ay+f_ry))
-            self.d_min_hist.append(self.lidar_stats.get("dmin", 0.0))
+                # Synchronized derived metrics
+                dt = t - self.t_last if self.t_last > 0 else 0.05
+                dv = d[1] - self.v_last
+                acc = dv / max(dt, 1e-3)
+                self.accel.append(acc)
+                self.v_last, self.t_last = d[1], t
+                
+                f_ax, f_ay = (float(d[15]), float(d[16])) if len(d) >= 17 else (0.0, 0.0)
+                f_rx, f_ry = (float(d[17]), float(d[18])) if len(d) >= 19 else (0.0, 0.0)
+                self.f_mag.append(math.hypot(f_ax+f_rx, f_ay+f_ry))
+                self.d_min_hist.append(self.lidar_stats.get("dmin", 0.0))
 
-        if len(d) >= 15:
-            self.pred_px = list(d[5:15:2])
-            self.pred_py = list(d[6:15:2])
-        if len(d) >= 31:
-            self.sectors = [float(v) for v in d[19:31]]
+            if len(d) >= 15:
+                self.pred_px = list(d[5:15:2])
+                self.pred_py = list(d[6:15:2])
+            if len(d) >= 31:
+                self.sectors = [float(v) for v in d[19:31]]
 
     def scan_cb(self, msg):
         angles = np.linspace(msg.angle_min, msg.angle_max, len(msg.ranges))
         r = np.array(msg.ranges)
         mask = np.isfinite(r) & (r > 0.05) & (r < msg.range_max)
         rv, av = r[mask], angles[mask]
-        self.scan_x = (rv * np.cos(av)).astype(np.float32)
-        self.scan_y = (rv * np.sin(av)).astype(np.float32)
-        self.scan_d = rv.astype(np.float32)
-        if len(rv):
-            self.lidar_stats = dict(n=int(len(rv)), dmin=float(rv.min()))
+        with self.data_lock:
+            self.scan_x = (rv * np.cos(av)).astype(np.float32)
+            self.scan_y = (rv * np.sin(av)).astype(np.float32)
+            self.scan_d = rv.astype(np.float32)
+            if len(rv):
+                self.lidar_stats = dict(n=int(len(rv)), dmin=float(rv.min()))
 
     def _lane_off_cb(self, msg):
         self.lane_offset = float(msg.data)
@@ -307,6 +311,13 @@ class TelemetryDashboard(Node):
         arr = _img_to_numpy(msg)
         if arr is None:
             return
+        
+        # DOWN-SAMPLING para fluidez en GUI
+        h, w = arr.shape[:2]
+        new_w = 400 if key == 'f' else 240
+        new_h = int(h * (new_w / w))
+        arr = cv2.resize(arr, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+
         now = self.get_clock().now().nanoseconds / 1e9
         dt = now - self._cam_last_t[key]
         with self._cam_lock:
@@ -427,9 +438,9 @@ def main(args=None):
     _cam_style(ax_cr, 'RIGHT CAM',  '◉')
 
     # Base images
-    im_cf = ax_cf.imshow(_blank_f, aspect='auto', interpolation='bilinear', zorder=1)
-    im_cb = ax_cb.imshow(_blank_s, aspect='auto', interpolation='bilinear', zorder=1)
-    im_cr = ax_cr.imshow(_blank_s, aspect='auto', interpolation='bilinear', zorder=1)
+    im_cf = ax_cf.imshow(_blank_f, aspect='auto', interpolation='nearest', zorder=1)
+    im_cb = ax_cb.imshow(_blank_s, aspect='auto', interpolation='nearest', zorder=1)
+    im_cr = ax_cr.imshow(_blank_s, aspect='auto', interpolation='nearest', zorder=1)
 
     # ── Corner HUD markers (front camera) ─────────────────────────────────────
     _clen = 0.07;  _cpad = 0.018;  _hcc = '#00FFAA'
@@ -544,19 +555,21 @@ def main(args=None):
                                color=BORDER_CLR, lw=0.8, zorder=0))
     # ── Animation ─────────────────────────────────────────────────────────────
     def update(_frame):
-        # ── Time-series ───────────────────────────────────────────────────────
-        if node.times:
-            # Snapshot data to ensure consistent lengths during this frame
-            with threading.Lock(): # Simple way to prevent mid-cb updates
-                t  = list(node.times)
-                vt = list(node.v_target)
-                va = list(node.v_actual)
-                st = list(node.steering)
-                de = list(node.dist_error)
-                ac = list(node.accel)
-                fm = list(node.f_mag)
-                dm = list(node.d_min_hist)
+        # 1. Snapshot time-series & LiDAR data
+        with node.data_lock:
+            t  = list(node.times)
+            vt = list(node.v_target)
+            va = list(node.v_actual)
+            st = list(node.steering)
+            de = list(node.dist_error)
+            ac = list(node.accel)
+            fm = list(node.f_mag)
+            dm = list(node.d_min_hist)
+            # LiDAR: Subsample for performance (take every 2nd point)
+            sx, sy, sd = node.scan_x[::2], node.scan_y[::2], node.scan_d[::2]
+            obs = float(node.obs_state[-1]) if node.obs_state else 0.0
 
+        if t:
             t0 = max(0.0, t[-1] - 10.0);  t1 = t[-1] + 0.5
             line_vt.set_data(t, vt)
             line_va.set_data(t, va)
@@ -575,11 +588,7 @@ def main(args=None):
             if de:
                 ax_e.set_ylim(0, max(max(de) * 1.2, 0.5))
 
-        obs = float(node.obs_state[-1]) if node.obs_state else 0.0
-        v_now = float(node.v_actual[-1]) if node.v_actual else 0.0
-
-        # ── Cluster data for camera boxes ─────────────────────────────────────
-        sx, sy, sd = node.scan_x, node.scan_y, node.scan_d
+        v_now = va[-1] if va else 0.0
         n_clusters = 0
         cluster_data = []
 
@@ -697,7 +706,7 @@ def main(args=None):
                 cf_lane_txt, lane_marker,
                 *cam_boxes, *cam_box_lbl)
 
-    ani = animation.FuncAnimation(fig, update, interval=80, blit=False)
+    ani = animation.FuncAnimation(fig, update, interval=30, blit=False)
     try:
         plt.show()
     except KeyboardInterrupt:
