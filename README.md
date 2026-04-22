@@ -347,5 +347,20 @@ ros2 run rqt_image_view rqt_image_view /lane/image_debug
    * **Smart World Selector**: Lógica de spawn condicional en el Launch File que adapta el origen del robot según el mundo seleccionado (Pro vs Test).
    * **Dynamic Track Viz**: El visualizador de RViz sincroniza el mesh mostrado con el entorno activo en Gazebo.
 
+## 🛰️ 10. Despliegue en QCar Físico (Deployment)
+
+El stack ha sido validado en el hardware real del QCar con una arquitectura de percepción de nivel industrial.
+
+### 10.1. Percepción Avanzada (BEV + Polynomial)
+Para el entorno físico, el `lane_detector.py` utiliza:
+* **Bird's-Eye View (BEV)**: Transformación homográfica para eliminar la distorsión de perspectiva.
+* **Ajuste Polinomial**: Modelado de la línea central con parábolas de 2do orden para curvas suaves.
+* **Filtro Temporal (EMA)**: Estabilidad extrema ante oclusiones o sombras.
+
+### 10.2. Monitorización en Tiempo Real
+Se incluye un **Physical Dashboard v3** diseñado para baja latencia (30 FPS) sobre red WiFi, permitiendo telemetría estilo MATLAB y calibración HSV en vivo.
+
+> **Consulta la guía completa en [README_FISICO.md](README_FISICO.md)**
+
 ---
 *"El que no arriesga, no gana la carrera."* 🏁

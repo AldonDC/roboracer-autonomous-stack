@@ -86,8 +86,9 @@ ros2 run roboracer_racing keyboard_teleop
 - [x] Migración del Launch de Simulación al Hardware Quanser (Dashing compatible).
 - [x] Corrección de Hardware (HIL Reset y Quanser Daemon).
 - [x] Traductor de Teclado a `/qcar/user_command`.
-- [x] Migración del `lane_detector` al tópico de hardware `/qcar/csi_front`.
-- [x] Establecimiento de Puente Visual vía Rosbridge(Foxglove).
+- [x] **Motor de Percepción Pro**: BEV + Polynomial Fit para línea central.
+- [x] **Dashboard v3**: Monitor de telemetría y gráficas de velocidad (30 FPS).
+- [x] Optimización de red vía `CompressedImage` (JPEG).
 
 **Siguientes Tareas Pendientes (🚀):**
 1. **Odometría Matemática:** Escribir un script que convierta velocidades de engrane del topic `/qcar/velocity` en posiciones `x, y, yaw` para simular el `/odom`.
