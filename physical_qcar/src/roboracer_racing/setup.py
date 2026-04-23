@@ -35,6 +35,7 @@ setup(
             'telemetry = roboracer_racing.telemetry_dashboard:main',
             'telemetry_fast = roboracer_racing.telemetry_dashboard_fast:main',
             'lane_detector = roboracer_racing.lane_detector:main',
+            'lidar_processor = roboracer_racing.lidar_processor:main',
             'physical_dashboard = roboracer_racing.physical_dashboard:main',
         ],
     },
