@@ -122,12 +122,13 @@ src/roboracer_racing/
 ## 🧠 5. Arquitectura de Percepción
 
 ### 5.1 Lane Detector (`lane_detector.py`)
+
 - **Bird's-Eye View (BEV)**: homografía 4 puntos → vista cenital sin distorsión perspectiva.
 - **Segmentación dual HSV + HLS**: dos espacios de color en paralelo, fusionados con `AND` lógico → ignora reflejos y sombras.
 - **Ajuste polinomial de 2° grado**: parábola $x = ay^2 + by + c$ por mínimos cuadrados sobre los píxeles amarillos.
-- **Filtro EMA temporal**: $\hat{o}_t = \alpha\, o_t + (1-\alpha)\, \hat{o}_{t-1}$, con $\alpha = 0.3$ → suaviza saltos cuando la línea se oculta.
+- **Filtro EMA temporal**: $\hat{o}_t = \alpha \, o_t + (1 - \alpha) \, \hat{o}_{t-1}$ , con $\alpha = 0.3$ → suaviza saltos cuando la línea se oculta.
 
-Salidas: `/lane/center_offset` ∈ [-1, 1], `/lane/confidence` ∈ [0, 1], `/lane/stop_sign`.
+Salidas: `/lane/center_offset` ∈ $[-1, 1]$, `/lane/confidence` ∈ $[0, 1]$, `/lane/stop_sign`.
 
 ### 5.2 LIDAR Processor (`lidar_processor.py`) ⭐
 
@@ -136,45 +137,54 @@ Suscribe a `/qcar/scan` (`sensor_msgs/LaserScan`) y produce un radar top-down + 
 #### 📐 Matemática del LIDAR
 
 **a) Ángulos por índice.** El `LaserScan` entrega un arreglo `ranges[i]` y dos escalares `angle_min`, `angle_increment`. El ángulo de cada lectura es:
-$$
+
+```math
 \theta_i = \theta_{\min} + i \cdot \Delta\theta, \qquad i = 0, 1, \dots, N-1
-$$
+```
 
 **b) Filtrado de lecturas válidas.** Descartamos NaN, ∞ y lecturas fuera del rango físico del sensor:
-$$
+
+```math
 \text{valid}_i = \text{isfinite}(r_i) \;\wedge\; r_{\min} < r_i < r_{\max}
-$$
+```
 
 **c) Cono frontal de seguridad (60°).** Definimos la máscara del cono frontal de semi-apertura $\phi = 30°$:
-$$
+
+```math
 \text{front}_i = \text{valid}_i \;\wedge\; |\theta_i| < \frac{\phi_{\text{cono}}}{2}
-$$
+```
 
 **d) Distancia mínima y ángulo del obstáculo más cercano:**
-$$
+
+```math
 i^* = \arg\min_{i \,\in\, \text{front}} r_i, \qquad d_{\min} = r_{i^*}, \qquad \theta^* = \theta_{i^*}
-$$
+```
 
 **e) Flag de obstáculo:**
-$$
-\text{obstacle} = \mathbb{1}\bigl[d_{\min} < d_{\text{th}}\bigr], \quad d_{\text{th}} = 0.6\ \text{m}
-$$
+
+```math
+\text{obstacle} = \mathbb{1}\!\left[\,d_{\min} < d_{\text{th}}\,\right], \quad d_{\text{th}} = 0.6 \; \text{m}
+```
 
 **f) Conversión polar → cartesiana (top-down).** Para pintar cada punto en la imagen, con el frente del carro hacia arriba:
-$$
+
+```math
 \begin{aligned}
-x_{\text{px}} &= c_x + r_i \sin(\theta_i) \cdot s \\
+x_{\text{px}} &= c_x + r_i \sin(\theta_i) \cdot s \\[6pt]
 y_{\text{px}} &= c_y - r_i \cos(\theta_i) \cdot s
 \end{aligned}
-$$
-donde $s = \dfrac{0.45 \cdot S}{r_{\max}}$ es la **escala** (px/m) para un canvas cuadrado de tamaño $S$, y $(c_x, c_y) = (S/2, S/2)$ es el centro = posición del carro.
+```
 
-> El signo negativo en $y$ es porque el eje Y de la imagen **crece hacia abajo**; queremos que el frente del carro ($\theta = 0$) apunte **hacia arriba**.
+donde $s = \dfrac{0.45 \cdot S}{r_{\max}}$ es la **escala** (px/m) para un canvas cuadrado de tamaño $S$, y $(c_x, c_y) = (S/2,\; S/2)$ es el centro = posición del carro.
+
+> El signo negativo en $y$ es porque el eje Y de la imagen **crece hacia abajo**; queremos que el frente del carro ( $\theta = 0$ ) apunte **hacia arriba**.
 
 **g) Coloreado por proximidad.** Cada punto se mapea a un color rojo→cyan según su distancia normalizada $t = r_i / r_{\max} \in [0, 1]$:
-$$
-\text{BGR}_i = \bigl(\,230t + 20,\;\; 200t + 40,\;\; 230(1-t) + 25\,\bigr)
-$$
+
+```math
+\text{BGR}_i = \bigl(\,230\,t + 20,\;\; 200\,t + 40,\;\; 230\,(1-t) + 25\,\bigr)
+```
+
 → cerca = rojo intenso; lejos = cyan.
 
 **h) Zonas de seguridad** (umbrales del dashboard):
