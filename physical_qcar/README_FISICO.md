@@ -159,7 +159,7 @@ $$\text{front}_i = \text{valid}_i \;\wedge\; \left|\theta_i\right| < \frac{\phi_
 
 **d) Distancia mínima y ángulo del obstáculo más cercano:**
 
-$$i^* = \arg\min_{i \,\in\, \text{front}} r_i, \qquad d_{\min} = r_{i^*}, \qquad \theta^* = \theta_{i^*}$$
+$$i^{*} = \arg\min_{i \,\in\, \text{front}} r_i, \qquad d_{\min} = r_{i^{*}}, \qquad \theta^{*} = \theta_{i^{*}}$$
 
 **e) Flag de obstáculo:**
 
