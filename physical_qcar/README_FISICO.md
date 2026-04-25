@@ -133,7 +133,7 @@ src/roboracer_racing/
 - **Bird's-Eye View (BEV)**: homografía 4 puntos → vista cenital sin distorsión perspectiva.
 - **Segmentación dual HSV + HLS**: dos espacios de color en paralelo, fusionados con `AND` lógico → ignora reflejos y sombras.
 - **Ajuste polinomial de 2° grado**: parábola $x = ay^2 + by + c$ por mínimos cuadrados sobre los píxeles amarillos.
-- **Filtro EMA temporal**: $\hat{o}_t = \alpha \, o_t + (1 - \alpha) \, \hat{o}_{t-1}$ , con $\alpha = 0.3$ → suaviza saltos cuando la línea se oculta.
+- **Filtro EMA temporal**: $\bar{o}_t = \alpha \cdot o_t + (1 - \alpha) \cdot \bar{o}_{t-1}$, con $\alpha = 0.3$ → suaviza saltos cuando la línea se oculta.
 
 Salidas: `/lane/center_offset` ∈ $[-1, 1]$, `/lane/confidence` ∈ $[0, 1]$, `/lane/stop_sign`.
 
