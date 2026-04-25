@@ -143,73 +143,48 @@ Suscribe a `/qcar/scan` (`sensor_msgs/LaserScan`) y produce un radar top-down + 
 
 #### 📐 Matemática del LIDAR
 
-<<<<<<< HEAD
-**a) Ángulos por índice.** El `LaserScan` entrega un arreglo `ranges[i]` y dos escalares `angle_min`, `angle_increment`. El ángulo de cada lectura es:
-
-```math
-\theta_i = \theta_{\min} + i \cdot \Delta\theta, \qquad i = 0, 1, \dots, N-1
-```
-=======
 **a) Ángulos por índice.** El `LaserScan` entrega un arreglo `ranges[i]` y dos escalares `angle_min`, `angle_increment`. Aplicamos inversión de eje (`flip_scan`) y calibración de orientación (`angle_offset`):
-$$
-\theta_i = (-1)^{\text{flip}} \cdot (\theta_{\min} + i \cdot \Delta\theta) + \theta_{\text{offset}}
-$$
-Normalizado siempre al rango $[-\pi, \pi]$.
->>>>>>> c8d0f0e (feat: Implementación profesional de Pure Pursuit Lane Follower y Dashboard v4.2 con Fusión LIDAR)
+
+$$\theta_i = (-1)^{\text{flip}} \cdot (\theta_{\min} + i \cdot \Delta\theta) + \theta_{\text{offset}}, \qquad i = 0, 1, \dots, N-1$$
+
+Normalizado siempre al rango $[-\pi,\, \pi]$.
 
 **b) Filtrado de lecturas válidas.** Descartamos NaN, ∞ y lecturas fuera del rango físico del sensor:
 
-```math
-\text{valid}_i = \text{isfinite}(r_i) \;\wedge\; r_{\min} < r_i < r_{\max}
-```
+$$\text{valid}_i = \text{isfinite}(r_i) \;\wedge\; r_{\min} < r_i < r_{\max}$$
 
 **c) Cono frontal de seguridad (60°).** Definimos la máscara del cono frontal de semi-apertura $\phi = 30°$:
 
-```math
-\text{front}_i = \text{valid}_i \;\wedge\; |\theta_i| < \frac{\phi_{\text{cono}}}{2}
-```
+$$\text{front}_i = \text{valid}_i \;\wedge\; \left|\theta_i\right| < \frac{\phi_{\text{cono}}}{2}$$
 
 **d) Distancia mínima y ángulo del obstáculo más cercano:**
 
-```math
-i^* = \arg\min_{i \,\in\, \text{front}} r_i, \qquad d_{\min} = r_{i^*}, \qquad \theta^* = \theta_{i^*}
-```
+$$i^* = \arg\min_{i \,\in\, \text{front}} r_i, \qquad d_{\min} = r_{i^*}, \qquad \theta^* = \theta_{i^*}$$
 
 **e) Flag de obstáculo:**
 
-```math
-\text{obstacle} = \mathbb{1}\!\left[\,d_{\min} < d_{\text{th}}\,\right], \quad d_{\text{th}} = 0.6 \; \text{m}
-```
+$$\text{obstacle} = \mathbb{1}\!\left[\,d_{\min} < d_{\text{th}}\,\right], \qquad d_{\text{th}} = 0.6 \;\text{m}$$
 
 **f) Conversión polar → cartesiana (top-down).** Para pintar cada punto en la imagen, con el frente del carro hacia arriba:
 
-```math
-\begin{aligned}
-x_{\text{px}} &= c_x + r_i \sin(\theta_i) \cdot s \\[6pt]
-y_{\text{px}} &= c_y - r_i \cos(\theta_i) \cdot s
-\end{aligned}
-```
+$$x_{\text{px}} = c_x + r_i \sin(\theta_i) \cdot s$$
+
+$$y_{\text{px}} = c_y - r_i \cos(\theta_i) \cdot s$$
 
 donde $s = \dfrac{0.45 \cdot S}{r_{\max}}$ es la **escala** (px/m) para un canvas cuadrado de tamaño $S$, y $(c_x, c_y) = (S/2,\; S/2)$ es el centro = posición del carro.
 
-> El signo negativo en $y$ es porque el eje Y de la imagen **crece hacia abajo**; queremos que el frente del carro ( $\theta = 0$ ) apunte **hacia arriba**.
+> El signo negativo en $y$ es porque el eje Y de la imagen **crece hacia abajo**; queremos que el frente del carro ($\theta = 0$) apunte **hacia arriba**.
 
-<<<<<<< HEAD
-**g) Coloreado por proximidad.** Cada punto se mapea a un color rojo→cyan según su distancia normalizada $t = r_i / r_{\max} \in [0, 1]$:
+**g) Coloreado por distancia (estilo RViz).** Cada punto se renderiza como un cuadrado con color basado en su distancia $d = r_i$:
 
-```math
-\text{BGR}_i = \bigl(\,230\,t + 20,\;\; 200\,t + 40,\;\; 230\,(1-t) + 25\,\bigr)
-```
+| Rango | Color |
+|-------|-------|
+| $d < 0.3$ m | 🟥 Rojo |
+| $0.3 \le d < 0.6$ m | 🟨 Amarillo |
+| $0.6 \le d < 0.8$ m | 🟩 Verde |
+| $d \ge 0.8$ m | 🟦 Azul/Cyan |
 
-→ cerca = rojo intenso; lejos = cyan.
-=======
-**g) Estética RViz.** Cada punto se renderiza como un cuadrado pequeño con color basado en distancia (Rainbow Flat):
-- $d < 0.3$: 🟥 Rojo
-- $0.3 \le d < 0.6$: 🟨 Amarillo
-- $0.6 \le d < 0.8$: 🟩 Verde
-- $d \ge 0.8$: 🟦 Azul/Cyan
-El fondo incluye una **grilla de 1m x 1m** y anillos circulares tenues.
->>>>>>> c8d0f0e (feat: Implementación profesional de Pure Pursuit Lane Follower y Dashboard v4.2 con Fusión LIDAR)
+El fondo incluye una **grilla de 1 m × 1 m** y anillos circulares tenues.
 
 **h) Zonas de seguridad** (umbrales del dashboard):
 
