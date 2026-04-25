@@ -86,7 +86,13 @@ class ROSBackend(Node):
         # LIDAR metricas
         self.create_subscription(Float32, '/lidar/min_distance', self._lmin_cb, 10)
         self.create_subscription(Float32, '/lidar/closest_angle', self._lang_cb, 10)
+        # LIDAR metricas
+        self.create_subscription(Float32, '/lidar/min_distance', self._lmin_cb, 10)
+        self.create_subscription(Float32, '/lidar/closest_angle', self._lang_cb, 10)
         self.create_subscription(Bool, '/lidar/obstacle', self._lobs_cb, 10)
+
+        # Autonomous state
+        self.create_subscription(Bool, '/lane/auto_active', self._auto_cb, 10)
 
         self.lock = threading.Lock()
 
@@ -98,6 +104,7 @@ class ROSBackend(Node):
         # Lane state
         self.offset = 0.0;       self.conf = 0.0
         self.stop_flag = False;  self.offset_t = 0.0
+        self.auto_active = False
 
         # Telemetria
         self.vel_x = 0.0;        self.vel_y = 0.0
@@ -157,6 +164,9 @@ class ROSBackend(Node):
 
     def _stop_cb(self, msg):
         self.stop_flag = bool(msg.data)
+
+    def _auto_cb(self, msg):
+        self.auto_active = bool(msg.data)
 
     def _vel_cb(self, msg):
         self.vel_x = float(msg.vector.x)
@@ -249,12 +259,14 @@ class Dashboard(QMainWindow):
             return l
         g.addWidget(mk('ROS:', DIM), 0, 0)
         self.l_ros = mk('OK', GREEN, 11, True); g.addWidget(self.l_ros, 0, 1)
-        g.addWidget(mk('Bateria:', DIM), 1, 0)
-        self.l_bat = mk('—', CYAN, 12, True); g.addWidget(self.l_bat, 1, 1)
-        g.addWidget(mk('Velocidad:', DIM), 2, 0)
-        self.l_vel = mk('—', M_BLUE, 12, True); g.addWidget(self.l_vel, 2, 1)
-        g.addWidget(mk('FPS:', DIM), 3, 0)
-        self.l_fps = mk('—', CYAN, 9); g.addWidget(self.l_fps, 3, 1)
+        g.addWidget(mk('Piloto:', DIM), 1, 0)
+        self.l_pilot = mk('MANUAL', DIM, 12, True); g.addWidget(self.l_pilot, 1, 1)
+        g.addWidget(mk('Bateria:', DIM), 2, 0)
+        self.l_bat = mk('—', CYAN, 12, True); g.addWidget(self.l_bat, 2, 1)
+        g.addWidget(mk('Velocidad:', DIM), 3, 0)
+        self.l_vel = mk('—', M_BLUE, 12, True); g.addWidget(self.l_vel, 3, 1)
+        g.addWidget(mk('FPS:', DIM), 4, 0)
+        self.l_fps = mk('—', CYAN, 9); g.addWidget(self.l_fps, 4, 1)
         return grp
 
     # ── Lane Status ──────────────────────────────────────────────────────────
@@ -386,6 +398,15 @@ class Dashboard(QMainWindow):
         # ── System Status ────────────────────────────────────────────────────
         now = n.get_clock().now().nanoseconds / 1e9
         v = math.hypot(n.vel_x, n.vel_y)
+        
+        # Pilot state
+        if n.auto_active:
+            self.l_pilot.setText('AUTONOMO')
+            self.l_pilot.setStyleSheet(f'color:{CYAN};font-size:12px;font-weight:bold;')
+        else:
+            self.l_pilot.setText('MANUAL')
+            self.l_pilot.setStyleSheet(f'color:{DIM};font-size:12px;font-weight:bold;')
+
         bat_age = now - n.battery_t if n.battery_t > 0 else 99.0
         if bat_age < 3.0:
             bv = n.battery_v

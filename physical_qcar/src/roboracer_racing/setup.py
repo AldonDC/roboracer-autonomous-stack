@@ -37,6 +37,7 @@ setup(
             'lane_detector = roboracer_racing.lane_detector:main',
             'lidar_processor = roboracer_racing.lidar_processor:main',
             'physical_dashboard = roboracer_racing.physical_dashboard:main',
+            'autonomous_lane_follower = roboracer_racing.autonomous_lane_follower:main',
         ],
     },
 )

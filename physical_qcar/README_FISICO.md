@@ -35,9 +35,10 @@ export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 ## 🚀 2. Secuencia de Lanzamiento Profesional (4 Terminales)
 
 ### 🔴 Terminal 1: Encendido del Hardware (SSH Jetson)
-*Levanta `qcar_node`, `lidar_node`, `csi_node` y el TF estático world→odom.*
+*Levanta `qcar_node`, `lidar_node`, `csi_node`, `lidar_processor` y el radar visual.*
 ```bash
 cd ~/Assesment_qcar_irs
+colcon build --packages-select roboracer_racing --symlink-install
 source install/setup.bash
 ros2 launch roboracer_racing physical_racing.launch.py
 ```
@@ -46,29 +47,35 @@ ros2 launch roboracer_racing physical_racing.launch.py
 *Detecta la línea central con BEV + ajuste polinomial.*
 ```bash
 cd ~/Assesment_qcar_irs
-source install/setup.bash
-# Rebuild si es necesario:
 colcon build --packages-select roboracer_racing --symlink-install
 source install/setup.bash
 ros2 run roboracer_racing lane_detector
 ```
 
-### 🟢 Terminal 3: Motor LIDAR — Spatial Awareness (SSH Jetson)
-*Procesa `/qcar/scan` → render top-down + distancia mínima frontal + flag de obstáculo.*
+### 🟢 Terminal 3: Inteligencia Autónoma (SSH Jetson)
+*Fusión Lane + LIDAR (Pure Pursuit architecture) con seguridad activa.*
+```bash
+cd ~/Assesment_qcar_irs
+colcon build --packages-select roboracer_racing --symlink-install
+source install/setup.bash
+ros2 run roboracer_racing autonomous_lane_follower
+```
+
+### 🟡 Terminal 4: Teleoperación Activa (SSH Jetson)
+*Mueve el QCar físicamente por la pista y dispara la misión autónoma.*
 ```bash
 cd ~/Assesment_qcar_irs
 source install/setup.bash
-# Rebuild si es necesario:
-colcon build --packages-select roboracer_racing --symlink-install
-source install/setup.bash
-ros2 run roboracer_racing lidar_processor
+ros2 run roboracer_racing keyboard_teleop  # <--- Presiona 'M' para START
 ```
 
-### 🖥️ Terminal 4: Physical Dashboard v4 (Laptop Local)
-*Visualización 30 FPS, layout 2 columnas: status (izq) + radar/cámaras (der).*
+### 🖥️ Terminal 5: Estación de Monitoreo (Laptop Local)
+*Dashboard visual en tiempo real.*
 ```bash
-cd ~/Documents/Assesment-Auto
-python3 src/racing_logic/roboracer_racing/roboracer_racing/physical_dashboard.py
+# En tu laptop (asegura ROS_DOMAIN_ID=115)
+cd ~/Documents/qcar_remoto/Assesment_qcar_irs
+source install/setup.bash
+ros2 run roboracer_racing physical_dashboard
 ```
 
 ---
@@ -136,11 +143,19 @@ Suscribe a `/qcar/scan` (`sensor_msgs/LaserScan`) y produce un radar top-down + 
 
 #### 📐 Matemática del LIDAR
 
+<<<<<<< HEAD
 **a) Ángulos por índice.** El `LaserScan` entrega un arreglo `ranges[i]` y dos escalares `angle_min`, `angle_increment`. El ángulo de cada lectura es:
 
 ```math
 \theta_i = \theta_{\min} + i \cdot \Delta\theta, \qquad i = 0, 1, \dots, N-1
 ```
+=======
+**a) Ángulos por índice.** El `LaserScan` entrega un arreglo `ranges[i]` y dos escalares `angle_min`, `angle_increment`. Aplicamos inversión de eje (`flip_scan`) y calibración de orientación (`angle_offset`):
+$$
+\theta_i = (-1)^{\text{flip}} \cdot (\theta_{\min} + i \cdot \Delta\theta) + \theta_{\text{offset}}
+$$
+Normalizado siempre al rango $[-\pi, \pi]$.
+>>>>>>> c8d0f0e (feat: Implementación profesional de Pure Pursuit Lane Follower y Dashboard v4.2 con Fusión LIDAR)
 
 **b) Filtrado de lecturas válidas.** Descartamos NaN, ∞ y lecturas fuera del rango físico del sensor:
 
@@ -179,6 +194,7 @@ donde $s = \dfrac{0.45 \cdot S}{r_{\max}}$ es la **escala** (px/m) para un canva
 
 > El signo negativo en $y$ es porque el eje Y de la imagen **crece hacia abajo**; queremos que el frente del carro ( $\theta = 0$ ) apunte **hacia arriba**.
 
+<<<<<<< HEAD
 **g) Coloreado por proximidad.** Cada punto se mapea a un color rojo→cyan según su distancia normalizada $t = r_i / r_{\max} \in [0, 1]$:
 
 ```math
@@ -186,6 +202,14 @@ donde $s = \dfrac{0.45 \cdot S}{r_{\max}}$ es la **escala** (px/m) para un canva
 ```
 
 → cerca = rojo intenso; lejos = cyan.
+=======
+**g) Estética RViz.** Cada punto se renderiza como un cuadrado pequeño con color basado en distancia (Rainbow Flat):
+- $d < 0.3$: 🟥 Rojo
+- $0.3 \le d < 0.6$: 🟨 Amarillo
+- $0.6 \le d < 0.8$: 🟩 Verde
+- $d \ge 0.8$: 🟦 Azul/Cyan
+El fondo incluye una **grilla de 1m x 1m** y anillos circulares tenues.
+>>>>>>> c8d0f0e (feat: Implementación profesional de Pure Pursuit Lane Follower y Dashboard v4.2 con Fusión LIDAR)
 
 **h) Zonas de seguridad** (umbrales del dashboard):
 
@@ -211,7 +235,9 @@ ros2 run roboracer_racing lidar_processor \
   -p scan_topic:=/qcar/scan \
   -p max_range:=5.0 \
   -p front_cone_deg:=60.0 \
-  -p obstacle_thresh:=0.6
+  -p obstacle_thresh:=0.6 \
+  -p angle_offset:=-1.5708 \
+  -p flip_scan:=True
 ```
 
 ---
@@ -263,24 +289,29 @@ ros2 run roboracer_racing lidar_processor \
 
 ---
 
-## 🛠️ 7. Progreso y Próximos Retos
+## 🛠️ 7. Resumen de Implementación Profesional
 
-**Completado (✅):**
-- [x] Migración del Launch de Simulación al Hardware Quanser.
-- [x] **Lane Detector Pro**: BEV + Polynomial Fit + segmentación dual + EMA.
-- [x] **LIDAR Processor**: render polar top-down + métricas frontales + flag de obstáculo. ⭐
-- [x] **Dashboard v4**: layout 2 columnas con radar como hero, batería, lane y plots.
-- [x] Optimización de red vía `CompressedImage` (JPEG).
-- [x] Control por teclado y telemetría de batería/velocidad.
+Hemos transformado el QCar en un vehículo de carreras autónomo con las siguientes capacidades de vanguardia:
 
-**Siguientes Tareas Pendientes (🚀):**
-1. **Odometría Matemática**: integrar `/qcar/velocity` + IMU para estimar $(x, y, \psi)$.
-2. **Fusión Lane + LIDAR**: si `obstacle=True` → reducir velocidad o frenar antes que el Pure Pursuit consuma el offset.
-3. **Navegación Autónoma**: enlazar el offset del polinomio al `pure_pursuit_node`.
+1.  **Arquitectura de Control Pure Pursuit**: No es un seguimiento de línea básico; es un controlador geométrico profesional que proyecta un *lookahead* dinámico y calcula la curvatura ideal de giro.
+2.  **Fusión Sensorial de Seguridad**: El sistema integra el LIDAR para frenado de emergencia y la confianza de visión para evitar comportamientos erráticos.
+3.  **Dashboard de Misión v4.2**: Visualización en tiempo real del radar LIDAR (estilo RViz), cámara frontal, métricas de batería y estado del piloto (MANUAL vs. AUTÓNOMO).
+4.  **Sistema de Disparo Remoto**: Activación segura mediante un canal dedicado para evitar interferencias de red.
 
 ---
 
-## 🔄 8. Sincronización con el Repositorio
+## 🛠️ 8. Progreso y Retos Superados
+
+**Completado (✅):**
+- [x] **Pure Pursuit Lane Follower**: Arquitectura profesional de seguimiento de carril. ⭐
+- [x] **Fusión Lane + LIDAR**: Seguridad activa ante obstáculos.
+- [x] **Radar LIDAR RViz-Style**: Visualización técnica de alta fidelidad.
+- [x] **Dashboard Telemetry**: Monitoreo de batería, velocidad y confianza.
+- [x] **Control Maestro**: Activación autónoma segura desde Teleop.
+
+---
+
+## 🔄 9. Sincronización con el Repositorio
 
 Para respaldar tus cambios del QCar físico en GitHub:
 ```bash

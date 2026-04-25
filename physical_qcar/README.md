@@ -32,68 +32,61 @@ Para que el QCar sea autónomo, el código físico se divide en "Capas" que usam
 
 ---
 
-## 🚀 2. Secuencia de Lanzamiento
-Ejecuta los siguientes comandos **exactamente en este orden**. Cada capa necesita una terminal (Pestaña) distinta.
+## 🚀 2. Secuencia de Lanzamiento Profesional
 
-### 🔴 Terminal 1: El Encendido del Hardware (SSH Jetson)
-*No la cierres nunca. Es el puente entre el mundo físico y ROS 2.*
+Para correr el sistema de carreras completo, abre 4 terminales siguiendo este orden exacto:
+
+### 🔴 Terminal 1: Hardware y Radar (SSH Jetson)
+*Levanta sensores, actuadores y el procesador de Radar LIDAR.*
 ```bash
-# Entrar al workspace físico
 cd ~/Assesment_qcar_irs
-# Cargar entorno ROS
+colcon build --packages-select roboracer_racing --symlink-install
 source install/setup.bash
-# Encender el Coche y Sensores
 ros2 launch roboracer_racing physical_racing.launch.py
 ```
 
-### 🔵 Terminal 2: El Analista de Visión (SSH Jetson)
-*Activa el pipeline del Lane Detector que analiza los píxeles de la cámara frontal.*
+### 🔵 Terminal 2: Percepción de Carril (SSH Jetson)
+*Detecta la línea amarilla con Visión Artificial.*
 ```bash
-# Entrar al workspace
 cd ~/Assesment_qcar_irs
 source install/setup.bash
-# Analizar carril físico (línea amarilla/blanca)
 ros2 run roboracer_racing lane_detector
 ```
 
-### 🟢 Terminal 3: Visualización Remota Integral (Foxglove)
-*Evitamos problemas de compatibilidad ROS Jazzy vs Dashing usando WebSockets.*
-```bash
-# En el coche (Terminal SSH extra):
-ros2 launch rosbridge_server rosbridge_websocket_launch.xml
-```
-Luego **en tu laptop**:
-1. Entra a `studio.foxglove.dev`
-2. Conexión Rosbridge a `ws://192.168.2.12:9090`
-3. Monitorea cámaras, lidar y comandos sin lag.
-
-> *Alternativa rápida para ver sólo cámaras en tu Laptop:* `ros2 run rqt_image_view rqt_image_view`
-
-### 🎮 Terminal 4: Teleoperación Activa (SSH Jetson)
-*Mueve el QCar físicamente por la pista.*
+### 🟢 Terminal 3: Inteligencia Autónoma (SSH Jetson)
+*Fusión Lane + LIDAR (Pure Pursuit architecture).*
 ```bash
 cd ~/Assesment_qcar_irs
 source install/setup.bash
-ros2 run roboracer_racing keyboard_teleop
+ros2 run roboracer_racing autonomous_lane_follower
 ```
-> **Controles:** `W` (Acelerar), `S` (Reversa), `A`/`D` (Volante), `Espacio` (Freno de Emergencia).
+
+### 🟡 Terminal 4: Dashboard y Control (Laptop Local)
+*Visualización en tiempo real y disparador de misión.*
+```bash
+# En Terminal A: Dashboard de Telemetría
+cd ~/Documents/qcar_remoto/Assesment_qcar_irs
+source install/setup.bash
+ros2 run roboracer_racing physical_dashboard
+
+# En Terminal B: Teleoperación y START
+cd ~/Documents/qcar_remoto/Assesment_qcar_irs
+source install/setup.bash
+ros2 run roboracer_racing keyboard_teleop  # <--- Presiona 'M' para START
+```
 
 ---
 
-## 🛠️ Progreso y Próximos Retos Físicos
+## 🛠️ Progreso y Retos Físicos
 
 **Completado (✅):**
-- [x] Migración del Launch de Simulación al Hardware Quanser (Dashing compatible).
-- [x] Corrección de Hardware (HIL Reset y Quanser Daemon).
-- [x] Traductor de Teclado a `/qcar/user_command`.
-- [x] **Motor de Percepción Pro**: BEV + Polynomial Fit para línea central.
-- [x] **Dashboard v3**: Monitor de telemetría y gráficas de velocidad (30 FPS).
-- [x] Optimización de red vía `CompressedImage` (JPEG).
+- [x] **Pure Pursuit Lane Follower**: Arquitectura profesional de seguimiento. ⭐
+- [x] **Fusión Lane + LIDAR**: Seguridad activa ante obstáculos.
+- [x] **Dashboard v4.2**: Monitor de telemetría y Radar (30 FPS).
+- [x] **Motor de Percepción Pro**: BEV + Polynomial Fit.
 
-**Siguientes Tareas Pendientes (🚀):**
-1. **Odometría Matemática:** Escribir un script que convierta velocidades de engrane del topic `/qcar/velocity` en posiciones `x, y, yaw` para simular el `/odom`.
-2. **SLAM Lidar:** Activar un mapa 2D usando el sensor `lidar_qos` para precisión en la pista.
-3. **Migración Pure Pursuit:** Enlazar el control robótico autónomo a la odometría para competir.
+Para una explicación técnica detallada sobre la matemática y los topics, consulta el:
+👉 **[README_FISICO.md](file:///home/alfonsd/Documents/qcar_remoto/Assesment_qcar_irs/README_FISICO.md)**
 
 ---
 > *Desplegado para Assesment_qcar_irs (RoboRacer Físico)*

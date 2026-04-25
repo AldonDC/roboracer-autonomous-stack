@@ -14,6 +14,7 @@ Controles:
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Vector3Stamped
+from std_msgs.msg import Bool
 import sys
 import termios
 import tty
@@ -28,7 +29,8 @@ KEYS_HELP = """
 ║          S / ↓  = Reversa        ║
 ║          A / ←  = Izquierda      ║
 ║          D / →  = Derecha        ║
-║         SPACE   = FRENO          ║
+║          SPACE   = FRENO / AUTO OFF║
+║          M      = START AUTO      ║
 ║          E / R  = +/- vel max    ║
 ║          Q      = Salir          ║
 ║                                  ║
@@ -58,6 +60,7 @@ class KeyboardTeleop(Node):
         self.steer = 0.0
 
         self.cmd_pub = self.create_publisher(Vector3Stamped, cmd_topic, 10)
+        self.auto_pub = self.create_publisher(Bool, '/lane/enable_auto', 10)
 
         # Publish at 50Hz
         self.timer = self.create_timer(0.02, self.publish_cmd)
@@ -85,17 +88,23 @@ class KeyboardTeleop(Node):
         elif key == ' ':  # Espacio = freno
             self.speed = 0.0
             self.steer = 0.0
+            # Desactivar auto al frenar
+            self.auto_pub.publish(Bool(data=False))
         elif key in ('e', 'E'):
             self.max_speed = min(self.max_speed + 0.2, 4.0)
             self.get_logger().info(f'⬆️ Max speed: {self.max_speed:.1f} m/s')
         elif key in ('r', 'R'):
             self.max_speed = max(self.max_speed - 0.2, 0.2)
             self.get_logger().info(f'⬇️ Max speed: {self.max_speed:.1f} m/s')
+        elif key in ('m', 'M'):
+            # Enviar señal de inicio autonomo (START)
+            self.auto_pub.publish(Bool(data=True))
+            self.get_logger().info('🚀 Mandando señal START para modo autonomo...')
         elif key in ('q', 'Q'):
             return False  # Señal de salida
 
         # Auto-centrar el steering gradualmente si no se toca A/D
-        if key not in ('a', 'A', 'd', 'D', '\x1b[D', '\x1b[C'):
+        if key not in ('a', 'A', 'd', 'D', '\x1b[D', '\x1b[C', 'm', 'M'):
             if abs(self.steer) > 0.01:
                 self.steer *= 0.85  # Retorno suave al centro
             else:

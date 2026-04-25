@@ -40,7 +40,21 @@ def generate_launch_description():
         }]
     )
 
-    # 4. STATIC TF (Importante para que el coche aparezca en el mapa)
+    # 4. LIDAR PROCESSOR (NUEVO)
+    lidar_proc_node = Node(
+        package=racing_pkg,
+        node_executable='lidar_processor',
+        node_name='lidar_processor',
+        output='screen',
+        parameters=[{
+            'angle_offset': -1.5708, # -90 deg
+            'flip_scan': True,
+            'max_range': 5.0,
+            'obstacle_thresh': 0.6
+        }]
+    )
+
+    # 5. STATIC TF (Importante para que el coche aparezca en el mapa)
     tf_node = Node(
         package='tf2_ros',
         node_executable='static_transform_publisher',
@@ -52,5 +66,6 @@ def generate_launch_description():
         qcar_node,
         lidar_node,
         csi_node,
+        lidar_proc_node,
         tf_node
     ])
