@@ -1,16 +1,36 @@
-# 🏁 RoboRacer — Documentación Técnica y Plan de Trabajo
+<div align="center">
 
-> **Alfonso D. — Tecnológico de Monterrey**
-> Materia: Assesment
-> Asesores: Dr. Daniel Sosa-Ceron · Dr. Jorge A. Reyes-Avendaño
-> Versión Actual: **v15.0 — Professional Oschersleben Ecosystem**
-> Última actualización: Abril 2026 (Pro Edition)
+# 🏁 RoboRacer · QCar 1 — Autonomous Racing Stack
 
-[**Ver Video Demostrativo del QCar (Navegación Pure Pursuit)**](https://github.com/AldonDC/roboracer-autonomous-stack/raw/main/docs/assets/demo_rviz.webm)
+### Integración de Percepción, Planeación y Control en un vehículo autónomo a escala 1:10
+
+**Tecnológico de Monterrey, Campus Puebla** · Bloque de Integración Final
+
+Alfonso Solís Díaz · Emmanuel Lechuga Arreola
+Profesores: A. Daniel Sosa-Cerón, Ph.D. · Jorge A. Reyes-Avendaño, Ph.D.
+
+![Demo del QCar físico siguiendo el carril y evadiendo obstáculos](docs/assets/demo_qcar.gif)
+
+*QCar físico: sigue el carril por visión, detecta los obstáculos y los bordea sin colisión, retomando la línea (×6).*
+
+[**▶ Ver demo en simulación (RViz · Pure Pursuit)**](https://github.com/AldonDC/roboracer-autonomous-stack/raw/main/docs/assets/demo_rviz.webm)
+
+</div>
 
 ---
 
-## 📋 1. Ojetivo del Proyecto
+> Stack de software en **ROS 2** que conduce un **Quanser QCar 1** de forma autónoma, tanto en
+> **simulación** (Gazebo Harmonic + RViz) como en el **hardware físico** (Jetson). Integra
+> percepción multimodal (visión + LIDAR + profundidad), planeación reactiva y un control
+> geométrico **Pure Pursuit** a 50 Hz.
+>
+> 📘 **Despliegue en el QCar físico:** la guía operativa completa (red, lanzamiento, topics,
+> arquitectura de percepción, FSM de evasión y fusión visión–LIDAR) está en
+> **[physical_qcar/README_FISICO.md](physical_qcar/README_FISICO.md)**.
+
+---
+
+## 📋 1. Objetivo del Proyecto
 Diseñar y desplegar un **software stack completo** para carreras autónomas de alta velocidad. El vehículo debe integrar chasis mecánico, electrónica de potencia y cómputo de alto rendimiento (NVIDIA Jetson). Las tareas incluyen: Time Trials, evasión de obstáculos dinámicos, y carreras *head-to-head*.
 
 ---
@@ -349,7 +369,10 @@ ros2 run rqt_image_view rqt_image_view /lane/image_debug
 
 ## 🛰️ 10. Despliegue en QCar Físico (Deployment)
 
-El stack ha sido validado en el hardware real del QCar con una arquitectura de percepción de nivel industrial.
+El stack fue **validado en el hardware real del QCar** (ver GIF al inicio): sigue el carril por
+visión, detecta los obstáculos y los evade sin colisión. El paquete físico vive en
+[`physical_qcar/`](physical_qcar/) y sigue la arquitectura **sensores → percepción → planeación →
+control → actuación**, con cada bloque como un nodo ROS 2 independiente.
 
 ### 10.1. Percepción Avanzada (BEV + Polynomial)
 Para el entorno físico, el `lane_detector.py` utiliza:
@@ -357,10 +380,24 @@ Para el entorno físico, el `lane_detector.py` utiliza:
 * **Ajuste Polinomial**: Modelado de la línea central con parábolas de 2do orden para curvas suaves.
 * **Filtro Temporal (EMA)**: Estabilidad extrema ante oclusiones o sombras.
 
-### 10.2. Monitorización en Tiempo Real
-Se incluye un **Physical Dashboard v4** (Qt + pyqtgraph) diseñado para baja latencia sobre red WiFi, con radar LIDAR top-down, cámara frontal, debug de carril y telemetría en vivo.
+### 10.2. Percepción multimodal y evasión
+* **LIDAR** (`lidar_processor.py`) — radar top-down, cono frontal de 90°, distancia/ángulo del obstáculo (con percentil anti-ruido).
+* **Profundidad** (`depth_processor.py`) — proximidad por imagen de profundidad RealSense D435 (sin DNN, NumPy vectorizado).
+* **Pure Pursuit + FSM de evasión** (`lane_follower_pp.py`) — control geométrico a 50 Hz, máquina de estados `NORMAL → REVERSING → STEER_AWAY → SETTLING` y **fusión visión–LIDAR** ponderada por distancia: $\delta = w\,\delta_{cam} + (1-w)\,\delta_{lidar}$.
 
-> **Consulta la guía completa del despliegue físico en [physical_qcar/README_FISICO.md](physical_qcar/README_FISICO.md)**
+### 10.3. Monitorización en Tiempo Real
+Se incluye un **Physical Dashboard v4** (Qt + pyqtgraph) de baja latencia sobre red WiFi, con radar
+LIDAR top-down, cámara frontal, debug de carril y telemetría en vivo. La Jetson solo publica datos;
+la visualización corre en la laptop (mismo `ROS_DOMAIN_ID`).
+
+> 📘 **Guía operativa completa** (red, lanzamiento, mapa de topics, calibración, FSM, fusión y
+> todos los módulos) → **[physical_qcar/README_FISICO.md](physical_qcar/README_FISICO.md)**
 
 ---
+
+<div align="center">
+
+**RoboRacer · QCar 1** — Tecnológico de Monterrey, Campus Puebla
 *"El que no arriesga, no gana la carrera."* 🏁
+
+</div>
