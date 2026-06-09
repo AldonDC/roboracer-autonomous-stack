@@ -213,7 +213,7 @@ Zonas de seguridad: **DANGER** `< 0.6 m` 🟥 · **WARNING** `0.6–1.5 m` 🟨 
 
 **Idea (como un conductor):** fija la vista en un punto del carril más adelante y gira hacia él.
 
-$$\delta = \operatorname{atan2}\!\big(2L\sin\alpha,\; l_d\big)$$
+$$\delta = \text{atan2}\big(2L\sin\alpha,\; l_d\big)$$
 
 donde $\delta$ es el giro de llantas, $\alpha$ el ángulo al punto objetivo, $L = 0.256$ m el
 wheelbase y $l_d$ el **lookahead** dinámico:

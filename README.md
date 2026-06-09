@@ -13,8 +13,6 @@ Profesores: A. Daniel Sosa-Cerón, Ph.D. · Jorge A. Reyes-Avendaño, Ph.D.
 
 *QCar físico: sigue el carril por visión, detecta los obstáculos y los bordea sin colisión, retomando la línea (×6).*
 
-[**▶ Ver demo en simulación (RViz · Pure Pursuit)**](https://github.com/AldonDC/roboracer-autonomous-stack/raw/main/docs/assets/demo_rviz.webm)
-
 </div>
 
 ---
@@ -65,6 +63,14 @@ donde $v$ es la velocidad lineal, $\delta$ el ángulo de giro de las llantas, $\
 ---
 
 # 🖥️ PARTE A — SIMULADO (Gazebo + RViz)
+
+<div align="center">
+
+![Demo de la simulación en Gazebo + RViz con telemetría en vivo](docs/assets/demo_sim.gif)
+
+*Simulación: Gazebo (pista + QCar) a la izquierda y estación de telemetría en tiempo real a la derecha (×8).* — [ver video completo](https://github.com/AldonDC/roboracer-autonomous-stack/raw/main/docs/assets/demo_rviz.webm)
+
+</div>
 
 > **Qué se logró:** un ecosistema de simulación hiperrealista donde el QCar completa *time-trials*
 > por waypoints, evade obstáculos dinámicos con campos de potencial, detecta líneas de carril por
@@ -265,7 +271,7 @@ $$\theta_i = (-1)^{\text{flip}}(\theta_{\min} + i\,\Delta\theta) + \theta_{\text
 
 **Idea (como un conductor):** fija la vista en un punto del carril más adelante y gira hacia él.
 
-$$\delta = \operatorname{atan2}\!\big(2L\sin\alpha,\; l_d\big), \qquad l_d = 0.5\,S_{\text{base}} + 0.4\,v$$
+$$\delta = \text{atan2}\big(2L\sin\alpha,\; l_d\big), \qquad l_d = 0.5\,S_{\text{base}} + 0.4\,v$$
 
 Más rápido ⇒ **mira más lejos** (trayectoria más suave); en curva cerrada **baja la velocidad**
 automáticamente; con **tope de seguridad** y **compensación de la zona muerta** del motor.
