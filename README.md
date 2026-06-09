@@ -19,385 +19,386 @@ Profesores: A. Daniel Sosa-Cerón, Ph.D. · Jorge A. Reyes-Avendaño, Ph.D.
 
 ---
 
-> Stack de software en **ROS 2** que conduce un **Quanser QCar 1** de forma autónoma, tanto en
-> **simulación** (Gazebo Harmonic + RViz) como en el **hardware físico** (Jetson). Integra
-> percepción multimodal (visión + LIDAR + profundidad), planeación reactiva y un control
-> geométrico **Pure Pursuit** a 50 Hz.
->
-> 📘 **Despliegue en el QCar físico:** la guía operativa completa (red, lanzamiento, topics,
-> arquitectura de percepción, FSM de evasión y fusión visión–LIDAR) está en
-> **[physical_qcar/README_FISICO.md](physical_qcar/README_FISICO.md)**.
+## 🎯 Resumen del proyecto
+
+**RoboRacer** es una competencia de carreras autónomas a escala **1:10**, cabeza a cabeza. No
+basta con ir rápido: el vehículo debe **evadir obstáculos y no chocar**. El reto es **integrar
+percepción + planeación + control en tiempo real** sobre cómputo embebido.
+
+> **En una frase:** el carro debe **ver**, **decidir** y **moverse** solo, rápido y sin golpear nada.
+
+Lo resolvimos en **dos frentes complementarios**, ambos con la misma arquitectura modular en ROS 2:
+
+| | 🖥️ **Parte A — Simulado** | 🏎️ **Parte B — Físico** |
+|---|---|---|
+| **Entorno** | Gazebo Harmonic + RViz | Hardware real Quanser QCar 1 + Jetson |
+| **Control** | Pure Pursuit adaptativo + perfiles de velocidad | Pure Pursuit + lookahead dinámico (50 Hz) |
+| **Evasión** | Campos de Potencial Artificial (APF) | FSM de evasión + fusión visión–LIDAR |
+| **Percepción** | Lane Detection dual-color + STOP signs | BEV + ajuste polinomial + LIDAR + profundidad |
+| **Navegación** | Multi-waypoint vía RViz (2D Nav Goal) | Seguimiento de carril continuo |
+| **Logro** | Time-trials, evasión dinámica, señales de alto | Recorrido autónomo + evasión sin colisión ✅ |
+
+| | |
+|---|---|
+| **Plataforma** | Quanser QCar 1 — LIDAR 2D, cámara RGB-D Intel RealSense D435, NVIDIA Jetson |
+| **Dirección** | Ackermann, $L = 0.256$ m, $\delta_{\max} \approx 30°$ |
+| **Middleware** | ROS 2 (Jazzy) · DDS FastRTPS · Gazebo Harmonic |
+| **Cómputo** | Visión clásica 320×240, control 50 Hz, sin DNN |
 
 ---
 
-## 📋 1. Objetivo del Proyecto
-Diseñar y desplegar un **software stack completo** para carreras autónomas de alta velocidad. El vehículo debe integrar chasis mecánico, electrónica de potencia y cómputo de alto rendimiento (NVIDIA Jetson). Las tareas incluyen: Time Trials, evasión de obstáculos dinámicos, y carreras *head-to-head*.
+## 🧮 Fundamento común: modelo cinemático Ackermann
+
+Ambas partes comparten el mismo modelo del vehículo. El QCar usa **dirección Ackermann**, que se
+modela con la **bicicleta cinemática**:
+
+$$\dot\psi = \frac{v}{L}\tan\delta \qquad\qquad R = \frac{L}{\tan\delta}$$
+
+donde $v$ es la velocidad lineal, $\delta$ el ángulo de giro de las llantas, $\psi$ la orientación
+(yaw), $L$ la distancia entre ejes y $R$ el radio de giro instantáneo. **Más velocidad o más giro
+⇒ curva más cerrada** (menor $R$).
+
+**Restricciones medibles:** $L = 0.256$ m · $\delta_{\max} \approx 30°$ · LIDAR cono 90° válido
+0.15–5 m · cámara D435 FOV 69° · velocidad 0.08–0.18 m/s · zona muerta del motor ≈ 0.12.
+
+---
+---
+
+# 🖥️ PARTE A — SIMULADO (Gazebo + RViz)
+
+> **Qué se logró:** un ecosistema de simulación hiperrealista donde el QCar completa *time-trials*
+> por waypoints, evade obstáculos dinámicos con campos de potencial, detecta líneas de carril por
+> visión y se detiene ante señales de alto. Todo orquestado desde RViz con un solo launcher.
+
+## A.1. Arquitectura del sistema (Gazebo + RViz)
+
+### Migración de la pista a Gazebo
+Para un entorno de pruebas hiperrealista, se recreó la pista oficial dentro de **Gazebo Harmonic**:
+* **Mesh 3D (`qcar_track.obj`)**: modelo 3D exacto de la pista con texturas (`SDCS_MapLayout.png`).
+* **Mundo (`test_world.sdf`)**: plugins físicos nativos (`dartsim`), pista estática + barreras perimetrales.
+* **Sincronización:** Gazebo procesa físicas a 1000 Hz y expone la odometría del QCar a ROS 2 vía `ros_gz_bridge`.
+
+### Visualización profesional en RViz
+* `odom_tf_broadcaster.py`: traduce la odometría plana de Gazebo a transformaciones TF (`world` → `base_link`), moviendo el carro en RViz en tiempo real.
+* `track_visualizer.py`: extrae los vértices del `.obj` de la pista y los transmite como `Marker` a RViz.
+
+### Oschersleben Pro (v15.0)
+* **Mesh de alta densidad**: entorno 100% offline (`track.obj`), sin dependencias de red.
+* **Safety Cars F1TENTH**: obstáculos basados en las mallas originales del simulador F1TENTH (`chassis.stl`, `wheels`, `hokuyo`).
+* **Física y offsets**: los obstáculos respetan los XACRO offsets originales para detección láser precisa.
 
 ---
 
-## 🏛️ 2. Arquitectura del Sistema (Gazebo + RViz)
+## A.2. Control: Pure Pursuit adaptativo
 
-### 2.1. Migración de la Pista a Gazebo
-Para tener un entorno de pruebas hiperrealista, se recreó la pista oficial de la competencia dentro de **Gazebo Harmonic**.
+El seguimiento de ruta (waypoint navigation) usa una variante del **algoritmo Pure Pursuit**,
+adaptada a dirección Ackermann. El objetivo es el ángulo de giro $\delta$ que mantenga al carro
+sobre un arco que intersecte un objetivo a una distancia $L_d$ (lookahead):
 
-* **Mesh 3D (`qcar_track.obj`)**: Se importó el modelo 3D exacto de la pista con sus texturas mapeadas (`SDCS_MapLayout.png`).
-* **Mundo de Gazebo (`test_world.sdf`)**: Se configuró utilizando los plugins físicos nativos (`dartsim`). La pista se carga estáticamente junto a barreras perimetrales (walls) para contener al carro.
-* **Sincronización:** Gazebo procesa las físicas a alta frecuencia (1000Hz) y expone la odometría del QCar a ROS 2 vía `ros_gz_bridge`.
+$$\delta = \arctan\!\left(\frac{2L \sin(\alpha)}{L_d}\right)$$
 
-### 2.2. Visualización Profesional en RViz
-Para evitar usar GUIs externas lentas (como Matplotlib) y mantener un workflow estándar de robótica, toda la interacción ocurre en **RViz**:
-* `odom_tf_broadcaster.py`: Traduce la odometría plana de Gazebo en transformaciones TF formales (`world` → `base_link`), moviendo al carro en RViz en tiempo real.
-* `track_visualizer.py`: Extrae los vértices del `.obj` de la pista de Gazebo y los transmite como `Marker` a RViz, permitiendo ver la pista real como plantilla base.
+donde $\alpha$ es el ángulo entre el heading actual y el waypoint, $L = 0.256$ m y $L_d$ la
+distancia de mirada al frente.
 
-### 2.3. Oschersleben Pro (v15.0)
-Para pruebas de rendimiento de nivel profesional, se implementó el circuito de **Oschersleben** con modelado 3D avanzado:
-* **Mesh de Alta Densidad**: Un entorno 100% offline basado en mallas locales (`track.obj`) que elimina dependencias de red.
-* **Safety Cars F1TENTH**: Integración de obstáculos basados en las mallas originales del simulador F1TENTH (`chassis.stl`, `wheels`, `hokuyo`).
-* **Física y Offsets**: Los obstáculos respetan los desplazamientos de chasis originales (XACRO offsets) para una detección láser ultra-precisa.
-* **Estilo D8T**: Acabado visual con chasis gris y llantas rojas de alta visibilidad para validación de visión artificial.
+### Perfiles de velocidad inteligentes
 
----
+**1) Límite por curvatura** — la velocidad se reduce inversamente al ángulo de dirección:
 
-## 🧮 3. Controlador Matemático: Pure Pursuit Adaptativo
+$$V(\delta) = \frac{V_{ref}}{1 + k\,|\delta|}$$
 
-El seguimiento autónomo de ruta (Waypoint Navigation) utiliza una variante mejorada del **Algoritmo Pure Pursuit**, adaptado específicamente para esquemas de dirección tipo Ackermann (como el QCar).
+con $V_{ref}$ la velocidad de crucero base, $k$ la ganancia de penalización en curvas y $|\delta|$
+la magnitud del giro actual.
 
-### 3.1. Teoría Pura (Pure Pursuit)
-El objetivo de Pure Pursuit es encontrar el ángulo de giro (steering angle $\delta$) que mantenga al carro sobre un arco circular que intersecte un objetivo a una distancia $L_d$ (Lookahead Distance).
+**2) Perfil de arribo (S-Curve)** — desaceleración suave por raíz cuadrada de la distancia al
+objetivo, evitando oscilación cerca del waypoint:
 
-**Ecuación de Dirección:**
+$$V_{dist} = V_{ref}\cdot\sqrt{\max\!\left(0.2,\;\frac{d}{d_{range}}\right)}$$
 
-$$
-\delta = \arctan\left(\frac{2L \sin(\alpha)}{L_d}\right)
-$$
+con $d$ la distancia euclidiana al waypoint activo y $d_{range}$ el radio de desaceleración.
 
-Donde:
-* $\delta$: Ángulo de dirección calculado (steering angle).
-* $L$: Distancia entre ejes del carro (0.256m).
-* $\alpha$: Ángulo entre el heading actual del carro y el waypoint.
-* $L_d$: Distancia de mirada al frente (Lookahead distance).
-
-### 3.2. Perfiles de Velocidad Inteligentes (v12)
-El controlador implementa un esquema de **Velocidad de Curvatura Crítica** para asegurar la estabilidad lateral en giros cerrados:
-
-1. **Límite por Curvatura**: La velocidad se reduce inversamente al ángulo de dirección $\delta$.
-
-$$V(\delta) = \frac{V_{ref}}{1 + k|\delta|}$$
-
-Donde:
-* $V(\delta)$: Velocidad final ajustada por curvatura.
-* $V_{ref}$: Velocidad de crucero base (parámetro configurable).
-* $k$: Ganancia de penalización (agresividad del frenado en curvas).
-* $|\delta|$: Magnitud del ángulo de dirección actual.
-
-2. **Perfil de Arribo (S-Curve)**: Desaceleración suave basada en la raíz cuadrada de la distancia al objetivo, evitando el comportamiento oscilatorio cerca del waypoint.
-
-$$V_{dist} = V_{ref} \cdot \sqrt{\max\left(0.2, \frac{d}{d_{range}}\right)}$$
-
-Donde:
-* $V_{dist}$: Límite de velocidad por proximidad al objetivo.
-* $d$: Distancia euclidiana actual al waypoint activo.
-* $d_{range}$: Radio de desaceleración (distancia donde inicia el frenado).
-
-3. **Filtro de Jerk**: El perfil de aceleración está limitado a $0.08\,m/s^2$ para proteger los actuadores mecánicos y evitar el deslizamiento de neumáticos.
+**3) Filtro de jerk** — la aceleración se limita a $0.08\,\mathrm{m/s^2}$ para proteger los
+actuadores y evitar deslizamiento de neumáticos.
 
 ---
 
-## 🛰️ 4. Evasión de Obstáculos: Artificial Potential Fields (APF)
+## A.3. Evasión de obstáculos: Artificial Potential Fields (APF)
 
-Para la navegación reactiva, el QCar utiliza un esquema de **Campos de Potencial**, donde el entorno se modela como un terreno de energías.
-
-### 4.1. Formalismo Matemático
-El potencial total $U(\mathbf{q})$ es la suma de una superficie atractiva y una repulsiva. La fuerza resultante es el gradiente negativo de dicho potencial:
+El entorno se modela como un terreno de energías. La fuerza resultante es el gradiente negativo del
+potencial total (atractivo + repulsivo):
 
 $$\mathbf{F}_{net} = -\nabla U_{att}(\mathbf{q}) - \nabla U_{rep}(\mathbf{q})$$
 
-Donde:
-* $\mathbf{F}_{net}$: Vector de fuerza resultante (comando de dirección).
-* $\nabla U_{att}$: Gradiente de atracción (fuerza hacia la meta).
-* $\nabla U_{rep}$: Gradiente de repulsión (fuerza contra obstáculos).
-* $\mathbf{q}$: Pose actual del robot en el espacio de configuración.
+La contribución repulsiva de cada cluster de obstáculos detectado por el láser:
 
-Calculamos la fuerza emitida por cada cluster de obstáculos detectados por el láser:
+$$\mathbf{F}_{rep} = \begin{cases} \eta \left( \dfrac{1}{\rho(\mathbf{q})} - \dfrac{1}{\rho_0} \right) \dfrac{1}{\rho^2(\mathbf{q})} \dfrac{\mathbf{q} - \mathbf{q}_{obs}}{\rho(\mathbf{q})} & \text{si } \rho(\mathbf{q}) \leq \rho_0 \\[2mm] 0 & \text{si } \rho(\mathbf{q}) > \rho_0 \end{cases}$$
 
-$$\mathbf{F}_{rep} = \begin{cases} \eta \left( \frac{1}{\rho(\mathbf{q})} - \frac{1}{\rho_0} \right) \frac{1}{\rho^2(\mathbf{q})} \frac{\mathbf{q} - \mathbf{q}_{obs}}{\rho(\mathbf{q})} & \text{si } \rho(\mathbf{q}) \leq \rho_0 \\ 0 & \text{si } \rho(\mathbf{q}) > \rho_0 \end{cases}$$
+donde $\eta$ es la ganancia de evasión, $\rho(\mathbf{q})$ la distancia al obstáculo más cercano,
+$\rho_0$ el radio de influencia y $\mathbf{q}-\mathbf{q}_{obs}$ el vector relativo obstáculo→robot.
 
-Donde:
-* $\mathbf{F}_{rep}$: Contribución repulsiva de un obstáculo/cluster.
-* $\eta$: Coeficiente de ganancia de evasión (escala de la fuerza).
-* $\rho(\mathbf{q})$: Distancia actual al punto más cercano del obstáculo.
-* $\rho_0$: Radio de influencia (umbral de detección del APF).
-* $\mathbf{q} - \mathbf{q}_{obs}$: Vector relativo desde el obstáculo hacia el robot.
-
-### 4.2. Evasión Dinámica (2D Nav Goal)
-Desde RViz, el operador puede colocar **objetos físicos reales** en Gazebo. El sistema intercepta el clic de navegación, envía un comando al simulador para `spawnear` un cubo rojo, y el carro lo detecta inmediatamente tanto por LiDAR como por Cámara.
+**Evasión dinámica (2D Nav Goal):** desde RViz el operador coloca objetos físicos reales en
+Gazebo. El sistema intercepta el clic, *spawnea* un cubo rojo, y el carro lo detecta por LiDAR y
+cámara.
 
 ---
 
-## 👁️ 5. Visión Artificial Activa — Lane Detection (v13)
+## A.4. Visión artificial activa — Lane Detection (v13)
 
-A partir de v13 el carro no solo "ve" las cámaras — las **interpreta**. El nodo `lane_detector.py` procesa la cámara `csi_front` con OpenCV para detectar las líneas de carril y fusiona el resultado con el APF y Pure Pursuit para formar un **control de tres capas**.
+El nodo `lane_detector.py` procesa la cámara `csi_front` con OpenCV y fusiona el resultado con APF
+y Pure Pursuit para un **control de tres capas**.
 
-### 5.1. Semántica de la Pista
+**Semántica de la pista:** línea **amarilla** = divisoria central (borde izquierdo del carril
+propio); borde **blanco/gris** = borde derecho. El detector estima el **centro del carril**
+$c_{lane}$ a partir de ambos bordes.
 
-La pista RoboRacer sigue la convención vial estándar:
-* **Línea amarilla** = divisoria central de la carretera (borde izquierdo del carril propio).
-* **Borde blanco/gris** = borde derecho del carril (curb exterior).
+**Pipeline OpenCV (5 etapas a 30 Hz):** BGR→HSV → doble máscara HSV (amarillo + blanco) →
+apertura/cierre morfológico (kernel 5×5) → ROI trapezoidal → Canny + `HoughLinesP` + ajuste de
+recta por mínimos cuadrados.
 
-El objetivo del detector es estimar el **centro del carril** $c_{lane}$ a partir de ambos bordes.
+Doble máscara binaria, una por color objetivo:
 
-### 5.2. Pipeline de Visión (OpenCV)
+$$M_{yellow}(p) = [\,H(p)\in[18,38] \wedge S(p)\in[80,255] \wedge V(p)\in[80,255]\,]$$
+$$M_{white}(p) = [\,S(p)\le 80 \wedge V(p)\ge 140\,]$$
 
-El algoritmo ejecuta un pipeline clásico de 5 etapas a 30 Hz.
+**Centro de carril (fusión)** según las detecciones disponibles:
 
-**Etapa 1 — Conversión de espacio de color.** Se convierte la imagen de $\text{BGR} \rightarrow \text{HSV}$ para aislar color independientemente de iluminación.
+$$c_{lane} = \begin{cases} \frac{x_Y + x_W}{2} & \text{ambas líneas} \\ x_Y + w_{lane} & \text{solo amarillo} \\ x_W - w_{lane} & \text{solo blanco} \\ \text{ninguna} & \text{sin estimación} \end{cases}$$
 
-**Etapa 2 — Doble máscara HSV.** Se generan dos máscaras binarias en paralelo, una por color objetivo:
+con $x_Y, x_W$ las posiciones X de las líneas amarilla/blanca y $w_{lane}$ el ancho medio de carril
+(fallback). Niveles de confianza: ambas = 1.00, solo amarillo = 0.70, solo blanco = 0.55, ninguna = 0.00.
 
-$$M_{yellow}(p) = 1 \cdot [ H(p) \in [18, 38] \land S(p) \in [80, 255] \land V(p) \in [80, 255] ]$$
+**Offset normalizado** publicado en `/lane/center_offset`, con suavizado exponencial:
 
-$$M_{white}(p) = 1 \cdot [ S(p) \leq 80 \land V(p) \geq 140 ]$$
+$$o = \mathrm{clip}\!\left(\frac{c_{lane}-w/2}{w/2},\,-1,\,+1\right), \qquad o_t = 0.7\,o_{t-1} + 0.3\,\tilde{o}_t$$
 
-Donde para un pixel $p$:
-* $M_{color}$: Máscara booleana resultante (1 si cumple, 0 si no).
-* $H(p), S(p), V(p)$: Componentes de Tono (Hue), Saturación y Valor en espacio HSV.
+**Fusión en el controlador (Lane-Assist):** el `multi_goal_navigator` inyecta una corrección
+lateral en el steering, pero **solo cuando el APF no está en emergencia** (LiDAR siempre manda):
 
-**Etapa 3 — Apertura + Cierre morfológico.** Elimina ruido de sal/pimienta y conecta segmentos fragmentados con un kernel rectangular de $5 \times 5$.
-
-**Etapa 4 — Region of Interest (ROI) trapezoidal.** Se aplica una máscara poligonal que conserva solo la mitad inferior de la imagen, descartando cielo y horizonte:
-
-$$\text{ROI} = \{ (0.02w, h), (0.20w, 0.55h), (0.80w, 0.55h), (0.98w, h) \}$$
-
-Donde:
-* $w, h$: Ancho y alto de la imagen de entrada en píxeles.
-* Los puntos definen el polígono de búsqueda exclusivo para líneas de suelo.
-
-**Etapa 5 — Detección de líneas.** Canny + `HoughLinesP` extrae segmentos; luego se ajusta una recta $x = my + b$ por mínimos cuadrados en cada lado.
-
-### 5.3. Modelo de Centro de Carril (Fusión)
-
-Sea $x_Y$ el $x$ del ajuste de la línea amarilla en la base de la imagen, $x_W$ el de la blanca, y $w_{lane}$ el ancho medio de carril asumido (28% del ancho de imagen). El centro de carril se calcula según las detecciones disponibles:
-
-$$
-c_{lane} = \begin{cases} 
-\frac{x_Y + x_W}{2} & \text{si ambas líneas detectadas} \\ 
-x_Y + w_{lane} & \text{solo amarillo} \\ 
-x_W - w_{lane} & \text{solo blanco} \\ 
-\text{ninguna} & \text{sin estimación} 
-\end{cases}
-$$
-
-Donde:
-* $c_{lane}$: Centro estimado del carril (coordenada horizontal de píxel).
-* $x_Y$: Posición X de la línea amarilla (divisoria central).
-* $x_W$: Posición X de la línea blanca (borde exterior).
-* $w_{lane}$: Ancho medio del carril en píxeles (utilizado como fallback).
-
-con niveles de confianza asociados:
-
-| Caso | Detecciones | $\text{conf}$ |
-|:-----|:------------|:--------------|
-| Completo | Amarillo + Blanco | $1.00$ |
-| Parcial A | Solo amarillo | $0.70$ |
-| Parcial B | Solo blanco | $0.55$ |
-| Blind | Ninguna | $0.00$ |
-
-El **offset normalizado** publicado en `/lane/center_offset` es:
-
-$$o = \text{clip}\left( \frac{c_{lane} - w/2}{w/2},\; -1,\; +1 \right)$$
-
-Con suavizado exponencial $o_t = 0.7\, o_{t-1} + 0.3\, \tilde{o}_t$ donde $o_t$ es el offset filtrado y $\tilde{o}_t$ es la medición cruda actual.
-
-### 5.4. Fusión en el Controlador (Lane-Assist)
-
-El `multi_goal_navigator` suscribe `/lane/center_offset` y `/lane/confidence` e inyecta un **término de corrección lateral** en el steering, pero **solo cuando el APF no está en modo emergencia** (para que LiDAR siempre mande):
-
-$$\delta_{final} = \delta_{PP} + \delta_{APF} + \delta_{lane}$$
-
-donde el término de visión se activa condicionalmente:
-
-$$\delta_{lane} = \begin{cases} k_{lane} \cdot o \cdot \text{conf} & \text{si } \text{conf} > 0.25 \\ 0 & \text{otros casos} \end{cases}$$
-
-Con:
-* $\delta_{final}$: Comando de dirección final hacia el vehículo.
-* $\delta_{PP}$: Componente de seguimiento de ruta (Pure Pursuit).
-* $\delta_{APF}$: Componente reactiva de evasión (Artificial Potential Fields).
-* $\delta_{lane}$: Corrección visual por mantenimiento de carril.
-* $k_{lane}$: Ganancia del asistente de carril (Lane-Assist Gain).
-* $o$: Offset lateral normalizado $[-1, 1]$.
-* $\text{conf}$: Nivel de confianza de la detección visual.
-
-### 5.5. Calibración de Cámaras (v13)
-
-Durante la integración se detectaron y corrigieron varios problemas en el URDF de sensores:
-
-| Cámara | Problema original | Corrección v13 |
-|--------|-------------------|---------------|
-| `csi_front` | FOV 160° (fisheye extremo) | **FOV 70° (1.22 rad)** + pitch 8.6° hacia abajo |
-| `csi_right` | FOV 160°, `y=-0.068` asimétrico | **FOV 80°**, `y=-0.060` |
-| `csi_left`  | FOV 160°, `y=+0.052`, nombre "front" | **FOV 80°**, `y=+0.060`, nombre "left" |
-| `csi_back`  | FOV 160°, nombre "front" | **FOV 86°**, nombre "back" |
-| `RGB` (RealSense) | `y=0.0315` off-center | `y=0.0` centrada |
-
-Resultado: **líneas rectas en la imagen se ven rectas** (sin distorsión de barril), amarillo y blanco conservan sus gradientes reales en HSV, y las side-cams tienen una posición simétrica como espejo.
+$$\delta_{final} = \delta_{PP} + \delta_{APF} + \delta_{lane}, \qquad \delta_{lane} = \begin{cases} k_{lane}\cdot o \cdot \mathrm{conf} & \text{si } \mathrm{conf} > 0.25 \\ 0 & \text{en otro caso} \end{cases}$$
 
 ---
 
-## ⚙️ 6. Nodos de Software (`roboracer_racing`)
+## A.5. Nodos del simulador (`roboracer_racing`)
 
-El *core* de nuestra lógica customizada habita en el paquete `roboracer_racing` y se divide en módulos modulares y de responsabilidad única:
-
-| Nodo (Python) | Descripción Técnica y Funcionalidad Destacada |
-|:--------------|:----------------------------------------------|
-| `multi_goal_navigator.py` | **Planner & Controller (v14).** <br>✅ **Gazebo Spawner**: Interfaz directa para inyectar modelos 3D físicos en el simulador vía RViz.<br>✅ **Lane-Assist & Stop-Go**: Fusión de visión amarillo/blanco y **parada inteligente en señales** con cooldown por distancia. |
-| `lane_detector.py` | **Visión Artificial Activa (v14).** <br>✅ **Dual HSV Masking**: Segmentación paralela amarillo + blanco.<br>✅ **Ultra-Sensitive Stop**: Detección de señales rojas optimizada para baja saturación. |
-| `telemetry_dashboard_fast.py` | **High-Speed Engineering Station (v14, NUEVO).** <br>✅ **PyQtGraph Engine**: 60+ FPS sin lag.<br>✅ **Perception Fusion**: Overlay de LiDAR y clusters sobre cámaras en tiempo real.<br>✅ **STOP HUD**: Alerta visual gigante al detectar señales de tráfico. |
-| `odom_tf_broadcaster.py` | **Puente Espacial.** Lee `/qcar_sim/odom` originado por Gazebo y expone el *Transform Tree* (`world` → `base_link`) para que RViz acople el modelo 3D del carro perfectamente con la física real. |
-| `track_visualizer.py` | **Pintor 3D de RViz.** Extrapola los vértices del `.obj` de la pista de Gazebo y transmite un `visualization_msgs/Marker` gigante a RViz, permitiendo ver la pista real como plantilla y referencia topológica. |
-| `keyboard_teleop.py` | **Conducción Manual.** Script WASD de precisión para validación de hardware y trazado empírico inicial. |
+| Nodo | Funcionalidad |
+|---|---|
+| `multi_goal_navigator.py` | Planner & controller: Pure Pursuit + APF + Lane-Assist, spawner de obstáculos en Gazebo, parada inteligente ante señales de alto. |
+| `lane_detector.py` | Visión activa: doble máscara HSV (amarillo/blanco) + detección de señales rojas. |
+| `telemetry_dashboard_fast.py` | Estación de ingeniería PyQtGraph (60+ FPS): fusión LiDAR–cámara + STOP HUD. |
+| `odom_tf_broadcaster.py` | Puente espacial Gazebo → TF tree (`world` → `base_link`). |
+| `track_visualizer.py` | Exporta el mesh de la pista a RViz como `Marker`. |
+| `keyboard_teleop.py` | Conducción manual WASD para validación. |
 
 ---
 
-## 📂 7. Estructura del Proyecto
+## A.6. Cómo correr el simulador
 
-A continuación se muestra cómo está organizado el código dentro del repositorio. Notarás la estricta separación de responsabilidades: *Simulators, Algorithms, and Support*.
+```bash
+# Terminal 1 — Entorno Pro (menú interactivo: Gazebo + RViz + telemetría + visión)
+cd ~/Documents/Assesment-Auto
+./scripts/launch_pro.sh
+
+# Terminal 2 — Cerebro autónomo
+source /opt/ros/jazzy/setup.bash
+cd ~/Documents/Assesment-Auto && source install/setup.bash
+ros2 run roboracer_racing multi_goal
+
+# (Opcional) Terminal 3 — Debug del lane detector
+ros2 run rqt_image_view rqt_image_view /lane/image_debug
+```
+
+**Interacción en RViz:** usa **Publish Point** para colocar waypoints (esferas numeradas), escribe
+`g` + Enter en la Terminal 2 para arrancar; usa **2D Nav Goal** para *spawnear* un obstáculo
+físico; `s` guarda la ruta, `c` limpia.
+
+---
+---
+
+# 🏎️ PARTE B — FÍSICO (Hardware QCar + Jetson)
+
+> **Qué se logró:** el QCar real (ver GIF arriba) **sigue el carril por visión, detecta los
+> obstáculos y los evade sin colisión**, retomando la línea — validado en pista cerrada con
+> obstáculos estáticos. El paquete vive en [`physical_qcar/`](physical_qcar/).
+
+## B.1. Arquitectura: sensores → percepción → planeación → control → actuación
+
+Cada bloque es un nodo ROS 2 independiente; si uno falla, los demás siguen.
+
+```
+   SENSORES            PERCEPCIÓN            PLANEACIÓN          CONTROL        ACTUACIÓN
+┌────────────┐      ┌──────────────┐      ┌──────────────┐                  ┌────────────┐
+│  LIDAR 2D  │─────▶│lidar_processor│────▶│ gap_follower │──┐               │ user_cmd   │
+├────────────┤      ├──────────────┤      ├──────────────┤  │  ┌─────────┐  ├────────────┤
+│RealSense   │─────▶│depth_processor│──┐  │ FSM evasión  │──┴─▶│  Pure   │─▶│ Motor +    │
+│  D435      │      ├──────────────┤  └─▶│  + fusión    │     │ Pursuit │  │ Servo      │
+├────────────┤      │              │     └──────────────┘     └─────────┘  │  (v, δ)    │
+│  Cámara    │─────▶│ lane_detector │────────────▲                          └────────────┘
+└────────────┘      └──────────────┘
+```
+
+**Decisiones de diseño:** percepción por **fusión** (cámara+LIDAR+profundidad, más robusta) ·
+planeación **híbrida** · control **Pure Pursuit** (ligero, cabe a 50 Hz) · decisión por **FSM**
+(predecible y fácil de depurar). Criterio: viabilidad, robustez y costo de cómputo embebido.
+
+---
+
+## B.2. Percepción: del pixel al "a dónde ir"
+
+`lane_detector.py`: `Imagen → CLAHE → Máscara amarilla (HSV/HLS) → Vista de pájaro (BEV) → Punto objetivo`
+
+* **CLAHE** — realza el contraste para que la línea resalte aunque cambie la luz.
+* **BEV** — *endereza* la imagen como vista cenital libre de perspectiva (homografía).
+* **Ajuste polinomial** — parábola de 2° grado por carril, suavizada con **filtro EMA**.
+* **Punto objetivo** — coordenada $(x,y)$ en metros de a dónde ir.
+
+**Percepción de distancia (fusión de 3 fuentes):**
+* **LIDAR** (`lidar_processor.py`) — cono frontal de 90°; usa un **percentil**, no el mínimo, para no frenar por un punto aislado.
+* **Profundidad** (`depth_processor.py`) — cuenta píxeles cercanos de la RealSense D435; confirma el obstáculo (sin DNN, NumPy vectorizado).
+* **Círculo de seguridad** — si algo entra muy cerca, **paro inmediato**.
+
+Ángulo del LIDAR por índice y obstáculo más cercano dentro del cono:
+
+$$\theta_i = (-1)^{\text{flip}}(\theta_{\min} + i\,\Delta\theta) + \theta_{\text{offset}}, \qquad i^\* = \arg\min_{i\in\text{front}} r_i$$
+
+---
+
+## B.3. Control: Pure Pursuit con lookahead dinámico
+
+**Idea (como un conductor):** fija la vista en un punto del carril más adelante y gira hacia él.
+
+$$\delta = \operatorname{atan2}\!\big(2L\sin\alpha,\; l_d\big), \qquad l_d = 0.5\,S_{\text{base}} + 0.4\,v$$
+
+Más rápido ⇒ **mira más lejos** (trayectoria más suave); en curva cerrada **baja la velocidad**
+automáticamente; con **tope de seguridad** y **compensación de la zona muerta** del motor.
+
+**Safety LIDAR integrado:** `d < 0.6 m` → freno total · `d < 1.5 m` → velocidad ×0.4 · sin datos
+> 0.5 s → ignora (sensor offline).
+
+---
+
+## B.4. Decisión: FSM de evasión
+
+```
+NORMAL ──obst.──▶ REVERSING ──libre──▶ STEER_AWAY ──rebasa──▶ SETTLING ──listo──▶ NORMAL
+   ▲                                                                                  │
+   └──────────────────────────────── sin obstáculo ──────────────────────────────────┘
+```
+
+| Estado | Qué hace |
+|---|---|
+| **NORMAL** | Sigue el carril. |
+| **REVERSING** | Retrocede girando al lado opuesto. |
+| **STEER_AWAY** | Avanza esquivando (rebasa). |
+| **SETTLING** | Se estabiliza y vuelve al carril. |
+
+---
+
+## B.5. Fusión visión–LIDAR
+
+El giro final **mezcla** dos sugerencias según la distancia al obstáculo:
+
+$$\delta = w\,\delta_{\text{cámara}} + (1-w)\,\delta_{\text{LIDAR}}$$
+
+El peso $w\in[0,1]$ lo decide la distancia: **lejos** → manda la cámara (seguir carril); **cerca**
+→ manda el LIDAR (esquivar). El cambio es **suave** (sin brincos), se **adapta a la distancia**
+(no un 50/50 fijo) y es **ligero y predecible** vs. un MPC o una red neuronal. El nodo
+`gap_follower.py` (Disparity Extender vectorizado) provee $\delta_{\text{LIDAR}}$ con su confianza.
+
+---
+
+## B.6. Nodos del stack físico
+
+**Núcleo:** `lane_detector` · `lidar_processor` · `lane_follower_pp` (Pure Pursuit + FSM + fusión + safety) · `physical_dashboard` · `keyboard_teleop`.
+
+**Complementarios:** `gap_follower` (Disparity Extender) · `depth_processor` (proximidad RealSense)
+· `yellow_line_tracker` · `lane_obstacle_avoider` · `qcar_state_estimator` (odometría IMU+tach) ·
+`imu_bno055`.
+
+---
+
+## B.7. Cómo correr el físico (resumen)
+
+```bash
+# Variables de red (en TODAS las terminales)
+export ROS_DOMAIN_ID=115
+export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+
+# Terminal 1 — Jetson: hardware base
+ros2 launch roboracer_racing physical_racing.launch.py
+# Terminal 2 — Jetson: pipeline autónoma completa
+ros2 launch roboracer_racing lane_pursuit.launch.py
+# Terminal 3 — Laptop: dashboard de monitoreo
+ros2 run roboracer_racing physical_dashboard
+```
+
+> 📘 **Guía operativa completa** (red, SSHFS, lanzamiento, mapa de topics, calibración, FSM,
+> fusión y todos los módulos) → **[physical_qcar/README_FISICO.md](physical_qcar/README_FISICO.md)**
+
+---
+---
+
+## 🛠️ Problemas y soluciones (físico)
+
+| Problema | Solución |
+|---|---|
+| Zona muerta del motor/servo | Velocidad mínima de motor y signo de servo calibrado. |
+| IMU con deriva/ruido | **No usar IMU** en el lazo base: control sobre el punto de visión (marco local). |
+| Visión sensible a la iluminación | **CLAHE** + fusión con LIDAR ponderada por confianza. |
+| Cómputo limitado del Jetson | **NumPy vectorizado**, *downscale* de profundidad, **sin DNN**. |
+| Frenado de más por lectura aislada del LIDAR | Distancia **representativa** (percentil) que ignora puntos sueltos. |
+
+---
+
+## 📊 Resultados
+
+| Escenario | Evasión | Observación |
+|---|---|---|
+| Seguimiento de carril (físico) | — | Sigue la línea de forma estable. |
+| Evasión de obstáculo (físico) | ✅ | Bordea sin colisión y retoma el carril. |
+| Time-trial por waypoints (sim) | — | Completa la ruta con Pure Pursuit + perfiles de velocidad. |
+| Evasión dinámica (sim) | ✅ | Esquiva obstáculos *spawneados* en Gazebo vía APF. |
+| Señales de alto (sim) | ✅ | Se detiene 5 s y reanuda (Behavioral Vision v14). |
+
+El QCar **completó el recorrido, detectó los obstáculos y los esquivó sin chocar**, volviendo al
+carril — como se ve en el GIF al inicio (la cámara cenital es solo registro; el carro percibe a bordo).
+
+---
+
+## 🏁 Conclusiones y trabajo futuro
+
+- Una arquitectura **modular en ROS 2** con percepción multimodal y un control geométrico ligero **funciona** tanto en simulación como sobre cómputo embebido real.
+- La **fusión visión–LIDAR** logra una transición estable entre seguir el carril y evadir obstáculos.
+- Decisiones de ingeniería (no IMU en el lazo base, visión clásica) priorizaron **robustez y simplicidad**.
+
+**Trabajo futuro:** localización con IMU/EKF para un modo de carrera global (`qcar_state_estimator`),
+control predictivo (MPC) en hardware más potente, percepción con aprendizaje, y carreras
+*head-to-head* con `ghost_car`.
+
+---
+
+## 📂 Estructura del repositorio
 
 ```text
 roboracer-autonomous-stack/
-├── docs/                             # Documentación Técnica Formal
-├── scripts/
-│   ├── build.sh                      # Helper builder para ROS 2
-│   └── launch_sim.sh                 # Máster Node Launcher para Gazebo
-├── src/
-│   ├── racing_logic/                 # 🧠 AQUÍ VIVE LA INTELIGENCIA ARTIFICIAL (ALGORITMOS)
-│   │   └── roboracer_racing/         # Nuestro paquete principal de Python
-│   │       ├── routes/               # Archivos JSON autogenerados de "perfect laps"
-│   │       ├── multi_goal_navigator.py # Loop principal (CLI + Pure Pursuit + APF + Lane-Assist)
-│   │       ├── lane_detector.py        # 👁️  Visión Artificial — detección amarillo/blanco (v13)
-│   │       ├── telemetry_dashboard.py  # GUI de Instrumentación Analítica MATLAB
-│   │       ├── odom_tf_broadcaster.py  # Sistema de Referencia Geométrico
-│   │       └── track_visualizer.py     # RViz Mesh Exporter
-│   ├── roboracer/                    # 🚗 HARDWARE / ROBOT / MUNDOS
-│   │   ├── roboracer_description/    # Specs físicas del QCar 3D, Sensores, RViz config
-│   │   ├── roboracer_gazebo/         # Escenarios de Gazebo Harmonic y Puentes físicos
-│   │   └── roboracer_interfaces/     # Serialización de Mensajes dedicados de ROS 2
-│   └── support/                      # Librerías heredadas (cámaras, modelos del profe)
-└── README.md                         # Documentación Root
+├── docs/assets/              # GIF del físico + demo RViz (simulación)
+├── physical_qcar/            # 🏎️ PARTE B — stack del QCar FÍSICO (Jetson)
+│   ├── README_FISICO.md      #    guía operativa completa del despliegue físico
+│   └── src/roboracer_racing/ #    nodos, launches y setup del hardware
+├── src/                      # 🖥️ PARTE A — stack de SIMULACIÓN
+│   ├── racing_logic/         #    🧠 algoritmos (multi_goal_navigator, lane_detector, …)
+│   ├── roboracer/            #    🚗 descripción del robot, mundos Gazebo, interfaces
+│   └── support/              #    librerías de apoyo
+├── simulator/                # mundos, mallas, RViz y configs de Gazebo
+├── scripts/                  # launch_pro.sh y helpers de build
+└── README.md                 # este documento
 ```
-
----
-
-## 🚀 8. Manual Rápido (Comandos de Uso)
-
-### Paso 1: Lanzar el Entorno Pro (Terminal 1)
-```bash
-cd ~/Documents/Assesment-Auto
-./scripts/launch_pro.sh
-```
-*Este es un menú interactivo que te permite elegir el archivo de mundo (SDF) y arranca **TODO** automáticamente: Gazebo, RViz, Telemetría, Visión y Sincronización.*
-
-### Paso 2: Ejecutar el Cerebro Autónomo (Terminal 2)
-```bash
-source /opt/ros/jazzy/setup.bash
-cd ~/Documents/Assesment-Auto
-source install/setup.bash
-
-# Solo necesitas lanzar el controlador CLI; el entorno visual ya está corriendo.
-ros2 run roboracer_racing multi_goal
-```
-
-### (Opcional) Terminal 3 — Visualización del Lane Detector
-```bash
-ros2 run rqt_image_view rqt_image_view /lane/image_debug
-# Verás la cámara frontal con overlay amarillo/blanco, líneas fit,
-# centro de carril estimado y cuadro HUD de estado.
-```
-
-### Paso 3: Interactuar
-1. En RViz (que se abrió solo en el Paso 1), usa la herramienta **Publish Point** (arriba a la derecha).
-2. Da **todos los clicks que quieras** a lo largo de la pista. (Verás aparecer esferas numeradas).
-3. Ve a la Terminal 2 y escribe **`g`**, luego `Enter` para que el carro arranque.
-4. **Obstáculos**: Selecciona **2D Nav Goal** en RViz y da click en la pista para que aparezca un cubo físico en Gazebo frente al carro.
-5. Escribe **`s`** para guardar la ruta, o **`c`** para limpiar (esto borrará también los cubos de Gazebo).
-
----
-
-## 📊 9. Plan de Trabajo Restante
-
-**✅ Fase 1: Simulación y RViz Completa.**
-**✅ Fase 2: Control Time-Trial Básico.**
-**✅ Fase 3: Evasión Inteligente (Autonomous Racing).**
-   * Campos de fuerza (APF) y frenado curvo adaptativo.
-   * Interacción física Gazebo ↔ RViz (Spawning dinámico).
-   * Telemetría de alta densidad (Gx, Clearance, AI Vision).
-
-**✅ Fase 3.5: Visión Artificial Activa (v13).**
-   * Detector OpenCV dual-color (amarillo/blanco) con ROI trapezoidal y Hough fit.
-   * Modelo de centro de carril con fallback por ancho fijo.
-   * Fusión `k_lane · o · conf` en el controlador, subordinada al APF.
-   * Recalibración completa de cámaras: FOV, pitch y simetría lateral.
-   * Dashboard con HUD de confianza en vivo.
-
-**⏳ Fase 4: Head-to-Head (Siguiente paso lógico)**
-   * Nodo `ghost_car.py` con modos `static` y `route` (seguimiento de waypoints).
-   * Detección adversaria vía `/ghost/odom` → obstáculo dinámico en el APF.
-   * Overtake logic agresivo-seguro: usar `sector_clearance` para elegir carril de rebase.
-   * Nuevo estado visual `OVERTAKE` en el dashboard.
-
-**✅ Fase 5: Launch Unificado y Optimización Pro.**
-   * `competition.launch.py` que integra simulación + periféricos en un solo flujo.
-   * `launch_pro.sh`: Launcher interactivo con selector de mundos SDF.
-   * Optimización de rendimiento en Telemetría (Subsampling + Thread Lock).
-   * Sincronización perfecta `use_sim_time` en todo el stack.
-
-**✅ Fase 6: Behavioral Vision — STOP Signs (v14.0).**
-   * Detector de color adaptativo (Dual-Range HSV Red) para señales.
-   * Region of Interest (ROI) lateral para señales de tráfico.
-   * Estado `WAITING` de 5 segundos con reanudación automática de ruta.
-   * Sistema de histéresis (Cooldown) para evitar paradas dobles en la misma señal.
-
-**✅ Fase 7: High-Performance Engine Telemetry (v14.1).**
-   * Migración completa de Matplotlib a **PyQtGraph** (60+ FPS).
-   * HUD de telemetría optimizado para renderizado asíncrono.
-   * Proyección dinámica de LiDAR-to-Camera Fusion.
-
-**✅ Fase 8: Professional Simulation Ecosystem (v15.0).**
-   * Integración de circuito Oschersleben con modelado de mallas local.
-   * Obstáculos F1TENTH de alta fidelidad con ensamblaje técnico real.
-   * **Smart World Selector**: Lógica de spawn condicional en el Launch File que adapta el origen del robot según el mundo seleccionado (Pro vs Test).
-   * **Dynamic Track Viz**: El visualizador de RViz sincroniza el mesh mostrado con el entorno activo en Gazebo.
-
-## 🛰️ 10. Despliegue en QCar Físico (Deployment)
-
-El stack fue **validado en el hardware real del QCar** (ver GIF al inicio): sigue el carril por
-visión, detecta los obstáculos y los evade sin colisión. El paquete físico vive en
-[`physical_qcar/`](physical_qcar/) y sigue la arquitectura **sensores → percepción → planeación →
-control → actuación**, con cada bloque como un nodo ROS 2 independiente.
-
-### 10.1. Percepción Avanzada (BEV + Polynomial)
-Para el entorno físico, el `lane_detector.py` utiliza:
-* **Bird's-Eye View (BEV)**: Transformación homográfica para eliminar la distorsión de perspectiva.
-* **Ajuste Polinomial**: Modelado de la línea central con parábolas de 2do orden para curvas suaves.
-* **Filtro Temporal (EMA)**: Estabilidad extrema ante oclusiones o sombras.
-
-### 10.2. Percepción multimodal y evasión
-* **LIDAR** (`lidar_processor.py`) — radar top-down, cono frontal de 90°, distancia/ángulo del obstáculo (con percentil anti-ruido).
-* **Profundidad** (`depth_processor.py`) — proximidad por imagen de profundidad RealSense D435 (sin DNN, NumPy vectorizado).
-* **Pure Pursuit + FSM de evasión** (`lane_follower_pp.py`) — control geométrico a 50 Hz, máquina de estados `NORMAL → REVERSING → STEER_AWAY → SETTLING` y **fusión visión–LIDAR** ponderada por distancia: $\delta = w\,\delta_{cam} + (1-w)\,\delta_{lidar}$.
-
-### 10.3. Monitorización en Tiempo Real
-Se incluye un **Physical Dashboard v4** (Qt + pyqtgraph) de baja latencia sobre red WiFi, con radar
-LIDAR top-down, cámara frontal, debug de carril y telemetría en vivo. La Jetson solo publica datos;
-la visualización corre en la laptop (mismo `ROS_DOMAIN_ID`).
-
-> 📘 **Guía operativa completa** (red, lanzamiento, mapa de topics, calibración, FSM, fusión y
-> todos los módulos) → **[physical_qcar/README_FISICO.md](physical_qcar/README_FISICO.md)**
 
 ---
 
 <div align="center">
 
 **RoboRacer · QCar 1** — Tecnológico de Monterrey, Campus Puebla
+*Bloque de Integración Final · Integración de Percepción, Planeación y Control*
+
 *"El que no arriesga, no gana la carrera."* 🏁
 
 </div>
