@@ -23,6 +23,12 @@ class AutonomousLaneFollower(Node):
         self.declare_parameter('behavior_style', 'BALANCED')
         self.declare_parameter('v_ref', 0.8)
         self.declare_parameter('track_width', 0.5) # Ancho estimado de carril (m)
+
+        # CAP DURO DE VELOCIDAD: limite absoluto que se aplica DESPUES de todo
+        # (estilo, curvas, LIDAR). Ningun comando publicado superara este valor.
+        # Es una red de seguridad final: aunque algo en la cadena calcule
+        # una velocidad mayor, esto la corta. Default conservador.
+        self.declare_parameter('v_max_safety', 0.20)
         
         # Estilos: (aceleracion, escala_vel, base_lookahead)
         self.styles = {
@@ -125,6 +131,11 @@ class AutonomousLaneFollower(Node):
         curve_factor = 1.0 - (abs(delta) / self.max_steer) * 0.35
         final_v = self.current_v * curve_factor
 
+        # CAP DURO DE SEGURIDAD: nunca superar v_max_safety, pase lo que pase.
+        # Se lee como parametro dinamico para tunearlo sin reiniciar el nodo.
+        v_max_safety = float(self.get_parameter('v_max_safety').value)
+        final_v = float(np.clip(final_v, 0.0, v_max_safety))
+
         # 5. Publicar Comando
         cmd = Vector3Stamped()
         cmd.header.stamp = self.get_clock().now().to_msg()
@@ -163,23 +174,3 @@ def main(args=None):
 if __name__ == '__main__':
     main()
 
-    def stop_car(self):
-        cmd = Vector3Stamped()
-        cmd.vector.x = 0.0
-        cmd.vector.y = 0.0
-        self.cmd_pub.publish(cmd)
-
-def main(args=None):
-    rclpy.init(args=args)
-    node = AutonomousLaneFollower()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        node.stop_car()
-        node.destroy_node()
-        rclpy.shutdown()
-
-if __name__ == '__main__':
-    main()

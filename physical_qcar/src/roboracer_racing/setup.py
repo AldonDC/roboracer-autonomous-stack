@@ -38,6 +38,13 @@ setup(
             'lidar_processor = roboracer_racing.lidar_processor:main',
             'physical_dashboard = roboracer_racing.physical_dashboard:main',
             'autonomous_lane_follower = roboracer_racing.autonomous_lane_follower:main',
+            'lane_follower_pp = roboracer_racing.lane_follower_pp:main',
+            'depth_processor = roboracer_racing.depth_processor:main',
+            'gap_follower = roboracer_racing.gap_follower:main',
+            'imu_bno055 = roboracer_racing.imu_bno055:main',
+            'lane_obstacle_avoider = roboracer_racing.lane_obstacle_avoider:main',
+            'qcar_state_estimator = roboracer_racing.qcar_state_estimator:main',
+            'yellow_line_tracker = roboracer_racing.yellow_line_tracker:main',
         ],
     },
 )

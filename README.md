@@ -358,9 +358,9 @@ Para el entorno físico, el `lane_detector.py` utiliza:
 * **Filtro Temporal (EMA)**: Estabilidad extrema ante oclusiones o sombras.
 
 ### 10.2. Monitorización en Tiempo Real
-Se incluye un **Physical Dashboard v3** diseñado para baja latencia (30 FPS) sobre red WiFi, permitiendo telemetría estilo MATLAB y calibración HSV en vivo.
+Se incluye un **Physical Dashboard v4** (Qt + pyqtgraph) diseñado para baja latencia sobre red WiFi, con radar LIDAR top-down, cámara frontal, debug de carril y telemetría en vivo.
 
-> **Consulta la guía completa en [README_FISICO.md](README_FISICO.md)**
+> **Consulta la guía completa del despliegue físico en [physical_qcar/README_FISICO.md](physical_qcar/README_FISICO.md)**
 
 ---
 *"El que no arriesga, no gana la carrera."* 🏁

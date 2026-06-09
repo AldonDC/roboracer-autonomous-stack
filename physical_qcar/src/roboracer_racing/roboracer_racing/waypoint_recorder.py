@@ -1,13 +1,15 @@
 """
 Waypoint Recorder — Graba waypoints mientras manejas el QCar manualmente.
 
-Uso:
-  1. Lanza la simulación: ./scripts/launch_sim.sh
+Uso (QCar fisico):
+  1. Lanza hardware, IMU, state_estimator y teleop normalmente
   2. En otra terminal: ros2 run roboracer_racing waypoint_recorder
-  3. Mueve el carro con joystick o con ros2 topic pub
-  4. Cuando termines, presiona Ctrl+C y se guarda el archivo .json
+  3. Conduce el carro con teleop por la pista que quieres grabar
+  4. Cuando termines, Ctrl+C → guarda en routes/route_YYYYMMDD_HHMMSS.json
+  5. Despues usar el JSON con: ros2 run roboracer_racing pure_pursuit \\
+                                  --ros-args -p route_file:=/path/route.json
 
-El archivo guardado se usa después con el nodo pure_pursuit.
+El archivo guardado se usa despues con el nodo pure_pursuit.
 """
 import rclpy
 from rclpy.node import Node
@@ -22,8 +24,11 @@ class WaypointRecorder(Node):
         super().__init__('waypoint_recorder')
 
         self.declare_parameter('output_dir', '')
-        self.declare_parameter('min_distance', 0.15)  # metros entre waypoints
-        self.declare_parameter('odom_topic', '/qcar_sim/odom')
+        self.declare_parameter('min_distance', 0.15)         # metros entre waypoints
+        # Por default usa la odometria fusionada del state_estimator
+        # (que combina IMU + tach del QCar fisico). Si usas el sim del QCar,
+        # cambia a '/qcar_sim/odom' con --ros-args -p odom_topic:=...
+        self.declare_parameter('odom_topic', '/qcar/odom_fused')
 
         odom_topic = self.get_parameter('odom_topic').value
         self.min_dist = self.get_parameter('min_distance').value
@@ -69,8 +74,11 @@ class WaypointRecorder(Node):
         if self.output_dir:
             out_dir = self.output_dir
         else:
-            # Guardar junto al paquete
-            out_dir = os.path.expanduser('~/Documents/Assesment-Auto/src/racing_logic/roboracer_racing/routes')
+            # Default: ~/Assesment_qcar_irs/src/roboracer_racing/routes/
+            # Funciona en la Jetson sin importar quien corra el nodo.
+            out_dir = os.path.expanduser(
+                '~/Assesment_qcar_irs/src/roboracer_racing/routes'
+            )
 
         os.makedirs(out_dir, exist_ok=True)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')

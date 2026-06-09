@@ -9,6 +9,9 @@ Topics:
   /qcar/csi_front      CompressedImage   → Camera panel
   /lane/image_debug    CompressedImage   → Lane debug panel
   /lidar/image_debug   CompressedImage   → Radar panel (render desde Jetson)
+  /depth/image_debug   CompressedImage   → Camara ZED (deteccion obstaculos)
+  /depth/obstacle_detected Bool          → indicador ZED OBSTACLE
+  /depth/min_distance_center_10deg Float32 → distancia obstaculo ZED
   /lidar/min_distance  Float32
   /lidar/closest_angle Float32
   /lidar/obstacle      Bool
@@ -61,10 +64,9 @@ def _compressed_to_bgr(msg):
 class ROSBackend(Node):
     def __init__(self):
         super().__init__('physical_dashboard')
-        _qcar = QoSProfile(reliability=QoSReliabilityPolicy.RELIABLE,
-                           durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
-                           history=QoSHistoryPolicy.KEEP_LAST, depth=1)
-        _be = QoSProfile(reliability=QoSReliabilityPolicy.BEST_EFFORT, depth=2)
+        # QoS BEST_EFFORT depth=1 para video — coincide con csinode (Jetson)
+        # y nunca acumula frames viejos.
+        _be = QoSProfile(reliability=QoSReliabilityPolicy.BEST_EFFORT, depth=1)
 
         # Imagenes
         self.create_subscription(CompressedImage, '/qcar/csi_front',
@@ -73,6 +75,11 @@ class ROSBackend(Node):
                                  self._lane_cb, _be)
         self.create_subscription(CompressedImage, '/lidar/image_debug',
                                  self._lidar_img_cb, _be)
+        self.create_subscription(CompressedImage, '/yellow_line/image_debug',
+                                 self._yellow_cb, _be)
+        # Camara de profundidad ("ZED") — suscripcion dinamica y opcional
+        self.declare_parameter('show_zed_image', True)
+        self.zed_sub = None
 
         # Lane
         self.create_subscription(Float32, '/lane/center_offset', self._off_cb, 10)
@@ -86,20 +93,30 @@ class ROSBackend(Node):
         # LIDAR metricas
         self.create_subscription(Float32, '/lidar/min_distance', self._lmin_cb, 10)
         self.create_subscription(Float32, '/lidar/closest_angle', self._lang_cb, 10)
-        # LIDAR metricas
-        self.create_subscription(Float32, '/lidar/min_distance', self._lmin_cb, 10)
-        self.create_subscription(Float32, '/lidar/closest_angle', self._lang_cb, 10)
         self.create_subscription(Bool, '/lidar/obstacle', self._lobs_cb, 10)
+
+        # ZED (camara de profundidad) metricas
+        self.create_subscription(Bool, '/depth/obstacle_detected', self._zobs_cb, 10)
+        self.create_subscription(Float32, '/depth/min_distance_center_10deg',
+                                 self._zdist_cb, 10)
 
         # Autonomous state
         self.create_subscription(Bool, '/lane/auto_active', self._auto_cb, 10)
 
         self.lock = threading.Lock()
 
-        # Frames
-        self.frame_cam = None;   self.frame_lane = None;   self.frame_lidar = None
-        self.fps_cam = 0.0;      self.fps_lane = 0.0;      self.fps_lidar = 0.0
-        self._t_cam = 0.0;       self._t_lane = 0.0;       self._t_lidar = 0.0
+        # Frames: guardamos los BYTES CRUDOS de cada CompressedImage, no la
+        # imagen decodificada. El decode JPEG (5-15ms) se hace en el hilo Qt
+        # solo cuando vamos a mostrar — un decode por tick, no por mensaje.
+        # Esto evita que el callback ROS bloquee el executor en cada frame.
+        self.raw_cam   = None;   self.raw_lane  = None;   self.raw_lidar = None
+        self.raw_yellow = None;  self.raw_zed = None
+        self.frame_cam = None;   self.frame_lane = None;  self.frame_lidar = None
+        self.frame_yellow = None; self.frame_zed = None
+        self.fps_cam = 0.0;      self.fps_lane = 0.0;     self.fps_lidar = 0.0
+        self.fps_yellow = 0.0;   self.fps_zed = 0.0
+        self._t_cam = 0.0;       self._t_lane = 0.0;      self._t_lidar = 0.0
+        self._t_yellow = 0.0;    self._t_zed = 0.0
 
         # Lane state
         self.offset = 0.0;       self.conf = 0.0
@@ -114,6 +131,9 @@ class ROSBackend(Node):
         self.lidar_min = -1.0;   self.lidar_ang = 0.0
         self.lidar_obs = False;  self.lidar_t = 0.0
 
+        # ZED (camara de profundidad) metricas
+        self.zed_obs = False;    self.zed_dist = -1.0;    self.zed_t = 0.0
+
         # Historial graficas
         N = 300
         self.t_start = None
@@ -125,34 +145,44 @@ class ROSBackend(Node):
 
         self.get_logger().info('Dashboard v4 — Layout 2 columnas — QCar fisico')
 
-    # ── Callbacks de imagenes ────────────────────────────────────────────────
+    # ── Callbacks de imagenes (LIGEROS: solo guardan bytes crudos) ───────────
+    # NO se decodifica aqui — eso bloquearia el executor ROS en cada frame.
+    # El decode JPEG se hace en _update() del hilo Qt, solo para el frame
+    # mas reciente, una vez por tick.
     def _cam_cb(self, msg):
-        bgr = _compressed_to_bgr(msg)
-        if bgr is None: return
-        bgr = cv2.resize(bgr, (CAM_W, CAM_H), interpolation=cv2.INTER_NEAREST)
         now = self.get_clock().now().nanoseconds / 1e9
         with self.lock:
-            self.frame_cam = bgr
+            self.raw_cam = msg.data
             self.fps_cam = 1.0 / max(now - self._t_cam, 0.001)
             self._t_cam = now
 
     def _lane_cb(self, msg):
-        bgr = _compressed_to_bgr(msg)
-        if bgr is None: return
         now = self.get_clock().now().nanoseconds / 1e9
         with self.lock:
-            self.frame_lane = bgr
+            self.raw_lane = msg.data
             self.fps_lane = 1.0 / max(now - self._t_lane, 0.001)
             self._t_lane = now
 
     def _lidar_img_cb(self, msg):
-        bgr = _compressed_to_bgr(msg)
-        if bgr is None: return
         now = self.get_clock().now().nanoseconds / 1e9
         with self.lock:
-            self.frame_lidar = bgr
+            self.raw_lidar = msg.data
             self.fps_lidar = 1.0 / max(now - self._t_lidar, 0.001)
             self._t_lidar = now
+
+    def _yellow_cb(self, msg):
+        now = self.get_clock().now().nanoseconds / 1e9
+        with self.lock:
+            self.raw_yellow = msg.data
+            self.fps_yellow = 1.0 / max(now - self._t_yellow, 0.001)
+            self._t_yellow = now
+
+    def _depth_cb(self, msg):
+        now = self.get_clock().now().nanoseconds / 1e9
+        with self.lock:
+            self.raw_zed = msg.data
+            self.fps_zed = 1.0 / max(now - self._t_zed, 0.001)
+            self._t_zed = now
 
     # ── Callbacks de datos ───────────────────────────────────────────────────
     def _off_cb(self, msg):
@@ -167,6 +197,22 @@ class ROSBackend(Node):
 
     def _auto_cb(self, msg):
         self.auto_active = bool(msg.data)
+
+    def _check_zed_subscription(self):
+        show_zed = bool(self.get_parameter('show_zed_image').value)
+        if show_zed and self.zed_sub is None:
+            _be = QoSProfile(reliability=QoSReliabilityPolicy.BEST_EFFORT, depth=1)
+            self.zed_sub = self.create_subscription(
+                CompressedImage, '/depth/image_debug',
+                self._depth_cb, _be)
+            self.get_logger().info("Suscrito a /depth/image_debug en el dashboard.")
+        elif not show_zed and self.zed_sub is not None:
+            self.destroy_subscription(self.zed_sub)
+            self.zed_sub = None
+            with self.lock:
+                self.raw_zed = None
+                self.frame_zed = None
+            self.get_logger().info("Desuscrito de /depth/image_debug en el dashboard.")
 
     def _vel_cb(self, msg):
         self.vel_x = float(msg.vector.x)
@@ -196,6 +242,14 @@ class ROSBackend(Node):
 
     def _lobs_cb(self, msg):
         self.lidar_obs = bool(msg.data)
+
+    def _zobs_cb(self, msg):
+        self.zed_obs = bool(msg.data)
+        self.zed_t = self.get_clock().now().nanoseconds / 1e9
+
+    def _zdist_cb(self, msg):
+        self.zed_dist = float(msg.data)
+        self.zed_t = self.get_clock().now().nanoseconds / 1e9
 
 
 # ── Dashboard GUI ─────────────────────────────────────────────────────────────
@@ -227,19 +281,38 @@ class Dashboard(QMainWindow):
         # ── DERECHA (visual) ──────────────────────────────────────────────────
         right = QWidget(); rv = QVBoxLayout(right)
         rv.setSpacing(4); rv.setContentsMargins(0, 0, 0, 0)
-        rv.addWidget(self._cam_box('🎯 LIDAR RADAR — /lidar/image_debug', 'lidar'), 5)
-        rv.addWidget(self._cam_box('CAMARA FRONTAL — /qcar/csi_front', 'cam'), 3)
-        rv.addWidget(self._cam_box('LANE DEBUG — /lane/image_debug', 'lane'), 3)
+        rv.addWidget(self._cam_box('LIDAR RADAR — /lidar/image_debug', 'lidar'), 4)
+
+        # Fila combinada: frontal + yellow_line lado a lado, mismo ancho
+        front_row = QWidget()
+        front_hl = QHBoxLayout(front_row)
+        front_hl.setSpacing(4); front_hl.setContentsMargins(0, 0, 0, 0)
+        front_hl.addWidget(self._cam_box('CAMARA FRONTAL — /qcar/csi_front', 'cam'), 1)
+        front_hl.addWidget(self._cam_box('YELLOW TRACKER — /yellow_line/image_debug', 'yellow'), 1)
+        front_hl.addWidget(self._cam_box('ZED (PROFUNDIDAD) — /depth/image_debug', 'zed'), 1)
+        rv.addWidget(front_row, 3)
+
+        rv.addWidget(self._cam_box('LANE DEBUG — /lane/image_debug', 'lane'), 4)
         splitter.addWidget(right)
 
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 7)
         splitter.setSizes([420, 1080])
 
-        # Timer 30 FPS
-        self._timer = QTimer()
-        self._timer.timeout.connect(self._update)
-        self._timer.start(33)
+        # Cache de tamaños para evitar recalcular en cada frame
+        self._last_sizes = {}
+
+        # Dos timers independientes para evitar que el render pesado bloquee el video:
+        #   - _timer_video (33ms = 30 FPS) → SOLO paneles de imagen
+        #   - _timer_data  (200ms = 5 FPS) → plots, labels, stats
+        # Los datos no necesitan 20 FPS de refresco; el video sí.
+        self._timer_video = QTimer()
+        self._timer_video.timeout.connect(self._update_video)
+        self._timer_video.start(66)  # 15 FPS — much lighter on CPU!
+
+        self._timer_data = QTimer()
+        self._timer_data.timeout.connect(self._update_data)
+        self._timer_data.start(200)
 
     def _style(self):
         self.setStyleSheet(f"""
@@ -304,9 +377,14 @@ class Dashboard(QMainWindow):
         self.l_lang = mk('—', M_YEL, 12, True); g.addWidget(self.l_lang, 2, 1)
         g.addWidget(mk('Obstaculo:', DIM), 3, 0)
         self.l_lobs = mk('CLEAR', GREEN, 10, True); g.addWidget(self.l_lobs, 3, 1)
+        # ── Camara de profundidad ("ZED") ──
+        g.addWidget(mk('ZED obst:', DIM), 4, 0)
+        self.l_zobs = mk('CLEAR', GREEN, 10, True); g.addWidget(self.l_zobs, 4, 1)
+        g.addWidget(mk('ZED dist:', DIM), 5, 0)
+        self.l_zdist = mk('—', CYAN, 12, True); g.addWidget(self.l_zdist, 5, 1)
         self.lbar = QLabel(); self.lbar.setFixedHeight(16)
         self.lbar.setStyleSheet(f'background:{CARD};border:1px solid {BORDER};border-radius:3px;')
-        g.addWidget(self.lbar, 4, 0, 1, 2)
+        g.addWidget(self.lbar, 6, 0, 1, 2)
         return grp
 
     # ── Telemetry Plots ──────────────────────────────────────────────────────
@@ -353,26 +431,82 @@ class Dashboard(QMainWindow):
         lbl.setAlignment(Qt.AlignCenter)
         lbl.setStyleSheet('background:#050D16;color:#2A4060;font-size:14px;font-weight:bold;')
         lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        lbl.setMinimumHeight(180)
+        lbl.setMinimumHeight(200 if key == 'lane' else 180)
         lay.addWidget(lbl)
         if key == 'cam':     self.v_cam = lbl
         elif key == 'lane':  self.v_lane = lbl
+        elif key == 'yellow': self.v_yellow = lbl
+        elif key == 'zed':   self.v_zed = lbl
         else:                self.v_lidar = lbl
         return grp
 
     # ── Render helper ────────────────────────────────────────────────────────
     @staticmethod
     def _to_pixmap(bgr, tw, th):
+        if tw > 0 and th > 0:
+            bh, bw = bgr.shape[:2]
+            scale = min(tw / bw, th / bh)
+            nw, nh = max(1, int(bw * scale)), max(1, int(bh * scale))
+            if nw != bw or nh != bh:
+                # INTER_NEAREST es extremadamente rapido y ahorra CPU en la Jetson
+                bgr = cv2.resize(bgr, (nw, nh), interpolation=cv2.INTER_NEAREST)
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+        rgb = np.ascontiguousarray(rgb)
         h, w, ch = rgb.shape
-        qimg = QImage(rgb.data, w, h, ch * w, QImage.Format_RGB888)
-        return QPixmap.fromImage(qimg).scaled(tw, th, Qt.KeepAspectRatio, Qt.FastTransformation)
+        qimg = QImage(rgb.data, w, h, ch * w, QImage.Format_RGB888).copy()
+        return QPixmap.fromImage(qimg)
 
-    # ── Update 30 FPS ────────────────────────────────────────────────────────
-    def _update(self):
+    # ── Update RAPIDO (30 FPS): SOLO video ───────────────────────────────────
+    def _update_video(self):
+        """Solo procesa imagenes — corre a 30 FPS para fluidez visual."""
         n = self.node
         with n.lock:
-            cam, lane, lidar = n.frame_cam, n.frame_lane, n.frame_lidar
+            raw_cam, n.raw_cam       = n.raw_cam,    None
+            raw_lane, n.raw_lane     = n.raw_lane,   None
+            raw_lidar, n.raw_lidar   = n.raw_lidar,  None
+            raw_yellow, n.raw_yellow = n.raw_yellow, None
+            raw_zed, n.raw_zed       = n.raw_zed,    None
+
+        # Decode JPEG solo para los frames nuevos, fuera del lock
+        def _decode(raw):
+            if raw is None: return None
+            buf = np.frombuffer(bytes(raw), np.uint8)
+            return cv2.imdecode(buf, cv2.IMREAD_COLOR)
+
+        if raw_cam    is not None: n.frame_cam    = _decode(raw_cam)
+        if raw_lane   is not None: n.frame_lane   = _decode(raw_lane)
+        if raw_lidar  is not None: n.frame_lidar  = _decode(raw_lidar)
+        if raw_yellow is not None: n.frame_yellow = _decode(raw_yellow)
+        if raw_zed    is not None: n.frame_zed    = _decode(raw_zed)
+        cam, lane, lidar, yellow = n.frame_cam, n.frame_lane, n.frame_lidar, n.frame_yellow
+        zed = n.frame_zed
+
+        # Solo setPixmap si hay frame fresco — evita repintar lo mismo
+        if cam    is not None and raw_cam    is not None:
+            self.v_cam.setPixmap(self._to_pixmap(cam,       self.v_cam.width(),    self.v_cam.height()))
+        if lane   is not None and raw_lane   is not None:
+            self.v_lane.setPixmap(self._to_pixmap(lane,     self.v_lane.width(),   self.v_lane.height()))
+        if lidar  is not None and raw_lidar  is not None:
+            self.v_lidar.setPixmap(self._to_pixmap(lidar,   self.v_lidar.width(),  self.v_lidar.height()))
+        if yellow is not None and raw_yellow is not None:
+            self.v_yellow.setPixmap(self._to_pixmap(yellow, self.v_yellow.width(), self.v_yellow.height()))
+        # Manejar el estado deshabilitado del panel ZED
+        show_zed = bool(n.get_parameter('show_zed_image').value)
+        if not show_zed:
+            self.v_zed.setText("DISABLED (show_zed_image=False)")
+            self.v_zed.setStyleSheet('background:#050D16;color:#556688;font-size:11px;font-weight:bold;')
+        elif raw_zed is None and n.frame_zed is None:
+            self.v_zed.setText("NO SIGNAL")
+            self.v_zed.setStyleSheet('background:#050D16;color:#2A4060;font-size:14px;font-weight:bold;')
+        elif zed is not None and raw_zed is not None:
+            self.v_zed.setPixmap(self._to_pixmap(zed,       self.v_zed.width(),    self.v_zed.height()))
+
+    # ── Update LENTO (5 FPS): plots + labels + stats ─────────────────────────
+    def _update_data(self):
+        """Plots, labels y stats — refrescan a 5 FPS, no necesitan video rate."""
+        n = self.node
+        n._check_zed_subscription()
+        with n.lock:
             fc, fl, fr = n.fps_cam, n.fps_lane, n.fps_lidar
             t  = list(n.h_time)
             hv = list(n.h_vel)
@@ -380,20 +514,18 @@ class Dashboard(QMainWindow):
             hc = list(n.h_conf)
             hl = list(n.h_lidar)
 
-        # Visual panels
-        if cam   is not None: self.v_cam.setPixmap(self._to_pixmap(cam,   self.v_cam.width(),   self.v_cam.height()))
-        if lane  is not None: self.v_lane.setPixmap(self._to_pixmap(lane, self.v_lane.width(),  self.v_lane.height()))
-        if lidar is not None: self.v_lidar.setPixmap(self._to_pixmap(lidar,self.v_lidar.width(),self.v_lidar.height()))
-
         # Plots
         if t:
+            te = t[-1]
+            xmin, xmax = max(0, te - 15), te + 0.5
             self.c_vel.setData(t, hv)
             self.c_off.setData(t, ho)
             self.c_conf.setData(t, hc)
             self.c_lid.setData(t, hl)
-            te = t[-1]
-            for p in (self.p_vel, self.p_off, self.p_conf, self.p_lid):
-                p.setXRange(max(0, te - 15), te + 0.5, padding=0)
+            if not hasattr(self, '_last_xmax') or abs(xmax - self._last_xmax) > 0.5:
+                for p in (self.p_vel, self.p_off, self.p_conf, self.p_lid):
+                    p.setXRange(xmin, xmax, padding=0)
+                self._last_xmax = xmax
 
         # ── System Status ────────────────────────────────────────────────────
         now = n.get_clock().now().nanoseconds / 1e9
@@ -468,6 +600,21 @@ class Dashboard(QMainWindow):
             self.l_lobs.setText('¡OBSTACULO!'); self.l_lobs.setStyleSheet(f'color:{RED};font-size:10px;font-weight:bold;')
         else:
             self.l_lobs.setText('CLEAR'); self.l_lobs.setStyleSheet(f'color:{GREEN};font-size:10px;font-weight:bold;')
+
+        # ── ZED (camara de profundidad) ──
+        zage = now - n.zed_t if n.zed_t > 0 else 99.0
+        zd = n.zed_dist
+        z_has = (zd is not None) and (zd >= 0.0)
+        if zage > 1.5:
+            self.l_zobs.setText('SIN SENAL'); self.l_zobs.setStyleSheet(f'color:{DIM};font-size:10px;font-weight:bold;')
+        elif n.zed_obs:
+            self.l_zobs.setText('¡OBSTACULO!'); self.l_zobs.setStyleSheet(f'color:{RED};font-size:10px;font-weight:bold;')
+        else:
+            self.l_zobs.setText('CLEAR'); self.l_zobs.setStyleSheet(f'color:{GREEN};font-size:10px;font-weight:bold;')
+        zc = RED if (z_has and zd < OBS_TH) else (YELLOW if (z_has and zd < WARN_TH) else CYAN)
+        self.l_zdist.setText(f'{zd:.2f} m' if (z_has and zage <= 1.5) else '---')
+        self.l_zdist.setStyleSheet(f'color:{zc};font-size:12px;font-weight:bold;')
+
         # Barra de proximidad: llena = lejos (seguro)
         lbw = max(self.lbar.width(), 1)
         frac = 0.0 if not has_data else float(np.clip(d / LIDAR_MAX_R, 0.0, 1.0))
